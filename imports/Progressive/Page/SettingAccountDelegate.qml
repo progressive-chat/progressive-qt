@@ -1,5 +1,5 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
 
 import Progressive.Component 2.0
@@ -12,7 +12,7 @@ Column {
 
     spacing: 8
 
-    ItemDelegate {
+    PItemDelegate {
         width: accountSettingsListView.width
         height: 64
 
@@ -72,7 +72,7 @@ Column {
                 MouseArea {
                     anchors.fill: parent
 
-                    onClicked: spectralController.setColor(connection.localUserId, modelData)
+                    onClicked: progressiveController.setColor(connection.localUserId, modelData)
                 }
             }
         }
@@ -123,13 +123,12 @@ Column {
             }
         }
 
-        Button {
+        PButton {
             Layout.fillWidth: true
 
-            highlighted: true
             text: "Logout"
 
-            onClicked: spectralController.logout(connection)
+            onClicked: progressiveController.logout(connection)
         }
     }
 }

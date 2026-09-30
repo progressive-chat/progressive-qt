@@ -49,7 +49,7 @@ MessageEventModel::MessageEventModel(QObject* parent)
   qmlRegisterType<FileTransferInfo>();
   qRegisterMetaType<FileTransferInfo>();
   qmlRegisterUncreatableType<EventStatus>(
-      "Spectral", 0, 1, "EventStatus", "EventStatus is not an creatable type");
+      "Progressive", 0, 1, "EventStatus", "EventStatus is not an creatable type");
 }
 
 MessageEventModel::~MessageEventModel() {}

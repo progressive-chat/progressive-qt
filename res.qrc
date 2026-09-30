@@ -1,6 +1,5 @@
 <RCC>
     <qresource prefix="/">
-        <file>qtquickcontrols2.conf</file>
         <file>qml/main.qml</file>
         <file>js/md.js</file>
         <file>js/util.js</file>
@@ -56,5 +55,5 @@
         <file>imports/Progressive/Component/SplitView.qml</file>
         <file>imports/Progressive/Compat/TrayIcon.qml</file>
         <file>imports/Progressive/Compat/qmldir</file>
-    </qresource>
+    <file>imports/Progressive/Component/PButton.qml</file><file>imports/Progressive/Component/PItemDelegate.qml</file><file>imports/Progressive/Component/PCircleButton.qml</file><file>imports/Progressive/Component/PDialog.qml</file><file>imports/Progressive/Component/PScreenStack.qml</file><file>imports/Progressive/Component/PDrawer.qml</file><file>imports/Progressive/Style/Palette.qml</file><file>imports/Progressive/Style/qmldir</file></qresource>
 </RCC>

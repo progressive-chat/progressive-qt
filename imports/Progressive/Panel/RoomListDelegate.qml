@@ -1,10 +1,10 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
-import QtQuick.Controls.Material 2.0
 
 import Progressive 0.1
 import Progressive.Setting 0.1
+import Progressive.Style 0.1
 
 import Progressive.Component 2.0
 
@@ -28,16 +28,13 @@ Rectangle {
                 enteredRoom = currentRoom
             }
         }
-
-        ToolTip.visible: miniMode && containsMouse
-        ToolTip.text: name
     }
 
     Rectangle {
         anchors.fill: parent
 
         visible: highlightCount > 0 || currentRoom === enteredRoom
-        color: Material.accent
+        color: PPalette.accent
         opacity: 0.1
     }
 
@@ -45,7 +42,7 @@ Rectangle {
         width: unreadCount > 0 ? 4 : 0
         height: parent.height
 
-        color: Material.accent
+        color: PPalette.accent
 
         Behavior on width {
             PropertyAnimation { easing.type: Easing.InOutCubic; duration: 200 }

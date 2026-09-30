@@ -1,7 +1,10 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
+import QtQuick.Controls.Styles 1.1
 import QtQuick.Layouts 1.2
-import QtQuick.Controls.Material 2.0
+
+import Progressive.Component 2.0
+import Progressive.Style 0.1
 
 import Progressive 0.1
 
@@ -12,9 +15,9 @@ Rectangle {
 
     id: header
 
-    color: Material.accent
+    color: PPalette.accent
 
-    ItemDelegate {
+    PItemDelegate {
         anchors.fill: parent
 
         id: roomHeader
@@ -72,8 +75,11 @@ Rectangle {
         z: 10
         anchors.bottom: parent.bottom
 
-        Material.accent: "white"
         visible: currentRoom && currentRoom.busy
         indeterminate: true
+
+        style: ProgressBarStyle {
+            progress: Rectangle { color: "white" }
+        }
     }
 }

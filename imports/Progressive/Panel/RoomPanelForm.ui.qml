@@ -1,13 +1,13 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
-import QtQuick.Controls.Material 2.0
 
 import Progressive.Component 2.0
 import Progressive.Component.Emoji 2.0
 import Progressive.Component.Timeline 2.0
 import Progressive.Menu 2.0
 import Progressive.Effect 2.0
+import Progressive.Style 0.1
 
 import Progressive 0.1
 import Progressive.Setting 0.1
@@ -35,10 +35,9 @@ Item {
     }
 
     RoomDrawer {
-        width: Math.min(root.width * 0.7, 480)
-        height: root.height
-
         id: roomDrawer
+
+        panelWidth: Math.min(root.width * 0.7, 480)
 
         room: currentRoom
     }
@@ -95,21 +94,25 @@ Item {
 
                 spacing: 8
 
-                Label {
+                Rectangle {
                     Layout.alignment: Qt.AlignHCenter
 
                     visible: section !== aboveSection
 
-                    text: section
-                    color: "white"
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: 8
-                    rightPadding: 8
-                    topPadding: 4
-                    bottomPadding: 4
+                    width: sectionLabel.width + 16
+                    height: sectionLabel.height + 8
+                    radius: 2
 
-                    background: Rectangle {
-                        color: PSettings.darkTheme ? "#484848" : "grey"
+                    color: PSettings.darkTheme ? "#484848" : "grey"
+
+                    Label {
+                        id: sectionLabel
+
+                        anchors.centerIn: parent
+
+                        text: section
+                        color: "white"
+                        verticalAlignment: Text.AlignVCenter
                     }
                 }
 
@@ -135,26 +138,30 @@ Item {
                     font.italic: true
                 }
 
-                Label {
+                Rectangle {
                     Layout.alignment: Qt.AlignHCenter
 
                     visible: readMarker === true && index !== 0
 
-                    text: "And Now"
-                    color: "white"
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: 8
-                    rightPadding: 8
-                    topPadding: 4
-                    bottomPadding: 4
+                    width: readMarkerLabel.width + 16
+                    height: readMarkerLabel.height + 8
+                    radius: 2
 
-                    background: Rectangle {
-                        color: PSettings.darkTheme ? "#484848" : "grey"
+                    color: PSettings.darkTheme ? "#484848" : "grey"
+
+                    Label {
+                        id: readMarkerLabel
+
+                        anchors.centerIn: parent
+
+                        text: "And Now"
+                        color: "white"
+                        verticalAlignment: Text.AlignVCenter
                     }
                 }
             }
 
-            RoundButton {
+            PCircleButton {
                 width: 64
                 height: 64
                 anchors.right: parent.right
@@ -164,17 +171,10 @@ Item {
 
                 visible: currentRoom && currentRoom.hasUnreadMessages
 
-                contentItem: MaterialIcon {
-                    anchors.fill: parent
-
-                    icon: "\ue316"
-                    color: "white"
-                }
-
-                Material.background: Material.accent
+                icon: "\ue316"
             }
 
-            RoundButton {
+            PCircleButton {
                 width: 64
                 height: 64
                 anchors.right: parent.right
@@ -184,39 +184,27 @@ Item {
 
                 visible: !messageListView.atYEnd
 
-                contentItem: MaterialIcon {
-                    anchors.fill: parent
-
-                    icon: "\ue313"
-                    color: "white"
-                }
-
-                Material.background: Material.accent
+                icon: "\ue313"
             }
 
             MessageContextMenu {
                 id: messageContextMenu
             }
 
-            Popup {
+            PDialog {
                 property string sourceText
-
-                x: (window.width - width) / 2
-                y: (window.height - height) / 2
-                width: 480
 
                 id: sourceDialog
 
-                parent: ApplicationWindow.overlay
-
-                modal: true
-
-                padding: 16
-
-                closePolicy: Dialog.CloseOnEscape | Dialog.CloseOnPressOutside
+                maxWidth: 480
+                showButtons: false
 
                 contentItem: ScrollView {
+                    height: 300
+
                     TextArea {
+                        id: sourceTextView
+
                         readOnly: true
                         selectByMouse: true
 
@@ -225,32 +213,23 @@ Item {
                 }
             }
 
-            Popup {
+            PDialog {
                 property alias listModel: readMarkerListView.model
-
-                x: (window.width - width) / 2
-                y: (window.height - height) / 2
-                width: 320
 
                 id: readMarkerDialog
 
-                parent: ApplicationWindow.overlay
-
-                modal: true
-                padding: 16
-
-                closePolicy: Dialog.CloseOnEscape | Dialog.CloseOnPressOutside
+                maxWidth: 320
+                showButtons: false
 
                 contentItem: AutoListView {
-                    implicitHeight: Math.min(window.height - 64,
-                                             readMarkerListView.contentHeight)
+                    height: Math.min(400, readMarkerListView.contentHeight)
 
                     id: readMarkerListView
 
                     clip: true
                     boundsBehavior: Flickable.DragOverBounds
 
-                    delegate: ItemDelegate {
+                    delegate: PItemDelegate {
                         width: parent.width
                         height: 48
 
@@ -274,9 +253,6 @@ Item {
                             }
                         }
                     }
-
-                    ScrollBar.vertical: ScrollBar {
-                    }
                 }
             }
         }
@@ -292,7 +268,7 @@ Item {
             Layout.leftMargin: 16
             Layout.rightMargin: 16
 
-            color: Material.background
+            color: PPalette.background
 
             RoomPanelInput {
                 anchors.verticalCenter: parent.top
@@ -305,9 +281,3 @@ Item {
         }
     }
 }
-
-
-/*##^## Designer {
-    D{i:0;autoSize:true;height:480;width:640}
-}
- ##^##*/

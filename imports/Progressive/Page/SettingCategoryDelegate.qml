@@ -1,7 +1,9 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 
-ItemDelegate {
+import Progressive.Component 2.0
+
+PItemDelegate {
     text: category
 
     onClicked: {

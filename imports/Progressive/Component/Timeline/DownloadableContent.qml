@@ -1,6 +1,6 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
-import QtQuick.Controls.Material 2.0
+
+import Progressive.Style 0.1
 // NOTE (Qt 5.6 port): Qt.labs.platform (StandardPaths) does not exist on
 // Qt 5.6. The cache dir comes from the `cacheLocation` context property
 // set in src/main.cpp from QStandardPaths::CacheLocation.
@@ -14,7 +14,7 @@ Item {
         height: parent.height
         width: progressInfo.active && !progressInfo.completed ? progressInfo.progress / progressInfo.total * parent.width : 0
 
-        color: Material.accent
+        color: PPalette.accent
         opacity: 0.4
     }
 

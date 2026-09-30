@@ -1,9 +1,6 @@
 import QtQuick 2.6
-
-import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
-import QtQuick.Controls.Material 2.0
 
 import Progressive.Panel 2.0
 import Progressive.Component 2.0
@@ -12,7 +9,7 @@ import Progressive.Effect 2.0
 import Progressive 0.1
 import Progressive.Setting 0.1
 
-Page {
+Item {
     property alias connection: roomListModel.connection
     property alias enteredRoom: roomListForm.enteredRoom
     property alias filter: roomListForm.filter
@@ -22,7 +19,7 @@ Page {
     RoomListModel {
         id: roomListModel
 
-        onNewMessage: if (!window.active) spectralController.postNotification(roomId, eventId, roomName, senderName, text, icon, iconPath)
+        onNewMessage: if (!window.active) progressiveController.postNotification(roomId, eventId, roomName, senderName, text, icon, iconPath)
     }
 
     SplitView {

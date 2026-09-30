@@ -38,9 +38,7 @@
 ****************************************************************************/
 
 import QtQuick 2.6
-import QtQuick.Controls 2.0
 import QtQuick.Layouts 1.2
-import QtQuick.Window 2.0
 
 Item {
     id: root
@@ -432,7 +430,8 @@ Item {
             MouseArea {
                 id: mouseArea
                 anchors.fill: parent
-                property real defaultMargin: Screen.pixelDensity * 2
+                // Qt 5.6 port: avoid QtQuick.Window dependency (Screen); fixed grab margin.
+                property real defaultMargin: 8
                 anchors.leftMargin: (parent.width <= 1) ? -defaultMargin : 0
                 anchors.rightMargin: (parent.width <= 1) ? -defaultMargin : 0
                 anchors.topMargin: (parent.height <= 1) ? -defaultMargin : 0

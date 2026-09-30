@@ -1,7 +1,6 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
-import QtQuick.Controls.Material 2.0
 // NOTE (Qt 5.6 port): Qt.labs.platform / Qt.labs.settings do not exist on
 // Qt 5.6, so the tray icon lives in Progressive.Compat.TrayIcon (loaded
 // lazily, ignored when unavailable) and settings in Progressive.Setting
@@ -9,6 +8,7 @@ import QtQuick.Controls.Material 2.0
 
 import Progressive.Component 2.0
 import Progressive.Page 2.0
+import Progressive.Style 0.1
 
 import Progressive 0.1
 import Progressive.Setting 0.1
@@ -27,10 +27,6 @@ ApplicationWindow {
 
     visible: true
     title: qsTr("Progressive Chat")
-
-    Material.theme: PSettings.darkTheme ? Material.Dark : Material.Light
-
-    Material.accent: progressiveController.color(currentConnection ? currentConnection.localUserId : "")
 
     // System tray (desktop only, Qt >= 5.8). On Qt 5.6 / Android this
     // Loader simply stays empty — the app remains fully usable.
@@ -69,12 +65,9 @@ ApplicationWindow {
         controller: progressiveController
     }
 
-    Dialog {
+    PDialog {
         property string error
         property string detail
-
-        x: (window.width - width) / 2
-        y: (window.height - height) / 2
 
         id: errorDialog
 
@@ -114,7 +107,7 @@ ApplicationWindow {
 
             id: sideNav
 
-            color: Material.primary
+            color: PPalette.primary
 
             ColumnLayout {
                 anchors.fill: parent
@@ -232,101 +225,24 @@ ApplicationWindow {
                         color:  "white"
                     }
 
-                    enabled: !addRoomMenu.opened
                     onClicked: addRoomMenu.popup()
 
                     Menu {
                         id: addRoomMenu
 
                         MenuItem {
-                            text:"New Room"
+                            text: "New Room"
                             onTriggered: addRoomDialog.open()
-
-                            Dialog {
-                                id: addRoomDialog
-                                parent: ApplicationWindow.overlay
-
-                                x: (window.width - width) / 2
-                                y: (window.height - height) / 2
-                                width: 360
-
-                                title: "New Room"
-                                modal: true
-                                standardButtons: Dialog.Ok | Dialog.Cancel
-
-                                contentItem: Column {
-                                    AutoTextField {
-                                        width: parent.width
-
-                                        id: addRoomDialogNameTextField
-
-                                        placeholderText: "Name"
-                                    }
-                                    AutoTextField {
-                                        width: parent.width
-
-                                        id: addRoomDialogTopicTextField
-
-                                        placeholderText: "Topic"
-                                    }
-                                }
-
-                                onAccepted: progressiveController.createRoom(currentConnection, addRoomDialogNameTextField.text, addRoomDialogTopicTextField.text)
-                            }
                         }
 
                         MenuItem {
                             text: "Join Room"
-
                             onTriggered: joinRoomDialog.open()
-
-                            Dialog {
-                                x: (window.width - width) / 2
-                                y: (window.height - height) / 2
-                                width: 360
-
-                                id: joinRoomDialog
-
-                                parent: ApplicationWindow.overlay
-
-                                title: "Input Room Alias or ID"
-                                modal: true
-                                standardButtons: Dialog.Ok | Dialog.Cancel
-
-                                contentItem: AutoTextField {
-                                    id: joinRoomDialogTextField
-                                    placeholderText: "#matrix:matrix.org"
-                                }
-
-                                onAccepted: progressiveController.joinRoom(currentConnection, joinRoomDialogTextField.text)
-                            }
                         }
 
                         MenuItem {
                             text: "Direct Chat"
-
                             onTriggered: directChatDialog.open()
-
-                            Dialog {
-                                x: (window.width - width) / 2
-                                y: (window.height - height) / 2
-                                width: 360
-
-                                id: directChatDialog
-
-                                parent: ApplicationWindow.overlay
-
-                                title: "Input User ID"
-                                modal: true
-                                standardButtons: Dialog.Ok | Dialog.Cancel
-
-                                contentItem: AutoTextField {
-                                    id: directChatDialogTextField
-                                    placeholderText: "@bot:matrix.org"
-                                }
-
-                                onAccepted: progressiveController.createDirectChat(currentConnection, directChatDialogTextField.text)
-                            }
                         }
                     }
                 }
@@ -356,37 +272,11 @@ ApplicationWindow {
                     }
 
                     onClicked: PSettings.confirmOnExit ? confirmExitDialog.open() : Qt.quit()
-
-                    Dialog {
-                        x: (window.width - width) / 2
-                        y: (window.height - height) / 2
-                        width: 360
-
-                        id: confirmExitDialog
-
-                        parent: ApplicationWindow.overlay
-
-                        title: "Exit"
-                        modal: true
-                        standardButtons: Dialog.Ok | Dialog.Cancel
-
-                        contentItem: Column {
-                            Label { text: "Exit?" }
-                            CheckBox {
-                                text: "Do not ask next time"
-                                checked: !PSettings.confirmOnExit
-
-                                onCheckedChanged: PSettings.confirmOnExit = !checked
-                            }
-                        }
-
-                        onAccepted: Qt.quit()
-                    }
                 }
             }
         }
 
-        StackView {
+        PScreenStack {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -394,6 +284,79 @@ ApplicationWindow {
 
             initialItem: roomPage
         }
+    }
+
+    PDialog {
+        id: addRoomDialog
+
+        title: "New Room"
+
+        contentItem: Column {
+            spacing: 8
+
+            AutoTextField {
+                width: parent.width
+
+                id: addRoomDialogNameTextField
+
+                placeholderText: "Name"
+            }
+            AutoTextField {
+                width: parent.width
+
+                id: addRoomDialogTopicTextField
+
+                placeholderText: "Topic"
+            }
+        }
+
+        onAccepted: progressiveController.createRoom(currentConnection, addRoomDialogNameTextField.text, addRoomDialogTopicTextField.text)
+    }
+
+    PDialog {
+        id: joinRoomDialog
+
+        title: "Input Room Alias or ID"
+
+        contentItem: AutoTextField {
+            id: joinRoomDialogTextField
+            placeholderText: "#matrix:matrix.org"
+        }
+
+        onAccepted: progressiveController.joinRoom(currentConnection, joinRoomDialogTextField.text)
+    }
+
+    PDialog {
+        id: directChatDialog
+
+        title: "Input User ID"
+
+        contentItem: AutoTextField {
+            id: directChatDialogTextField
+            placeholderText: "@bot:matrix.org"
+        }
+
+        onAccepted: progressiveController.createDirectChat(currentConnection, directChatDialogTextField.text)
+    }
+
+    PDialog {
+        id: confirmExitDialog
+
+        title: "Exit"
+
+        contentItem: Column {
+            spacing: 8
+
+            Label { text: "Exit?" }
+            CheckBox {
+                text: "Do not ask next time"
+                checked: !PSettings.confirmOnExit
+
+                onCheckedChanged: PSettings.confirmOnExit = !checked
+            }
+        }
+
+        onAccepted: Qt.quit()
     }
 
     Binding {

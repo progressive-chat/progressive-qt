@@ -1,6 +1,24 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Single-line text field in Progressive Chat style (Qt 5.6 safe:
+// Controls 1.4 + Styles 1.1). Replaces the Controls 2 based version.
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
+import QtQuick.Controls.Styles 1.1
+
+import Progressive.Style 0.1
 
 TextField {
     selectByMouse: true
+
+    style: TextFieldStyle {
+        background: Rectangle {
+            implicitHeight: 48
+            color: PPalette.inputBackground
+            border.color: control.activeFocus ? PPalette.accent : "transparent"
+            border.width: 2
+        }
+        padding {
+            left: 16
+        }
+    }
 }

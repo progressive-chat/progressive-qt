@@ -8,7 +8,17 @@
 # First difference vs upstream: buildable on Qt 5.6, targeting
 # Android 4.0 (API 14) down to Android 2.3 (API 9).
 
-QT += quick widgets multimedia
+QT += quick widgets
+
+# QtMultimedia is only used for voice-message playback. If the module is
+# missing (minimal builds), playback becomes a no-op warning instead of a
+# hard build error.
+qtHaveModule(multimedia) {
+    QT += multimedia
+} else {
+    DEFINES += PROGRESSIVE_NO_MULTIMEDIA
+    message("QtMultimedia not found - audio playback will be disabled.")
+}
 
 unix:!mac:!android {
     QT += dbus

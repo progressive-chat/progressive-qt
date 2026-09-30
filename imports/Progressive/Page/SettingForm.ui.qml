@@ -1,15 +1,15 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
-import QtQuick.Controls.Material 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
 
 import Progressive.Component 2.0
 import Progressive.Effect 2.0
+import Progressive.Style 0.1
 
 import Progressive 0.1
 import Progressive.Setting 0.1
 
-Page {
+Item {
     property alias listModel: accountSettingsListView.model
 
     property alias addAccountButton: addAccountButton
@@ -17,109 +17,124 @@ Page {
     implicitWidth: 400
     implicitHeight: 300
 
-    Page {
+    Item {
         id: accountForm
 
         parent: null
 
-        padding: 64
-
-        ColumnLayout {
+        Item {
             anchors.fill: parent
+            anchors.margins: 64
 
-            AutoListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
+            ColumnLayout {
+                anchors.fill: parent
 
-                id: accountSettingsListView
+                AutoListView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
 
-                boundsBehavior: Flickable.DragOverBounds
+                    id: accountSettingsListView
 
-                clip: true
+                    boundsBehavior: Flickable.DragOverBounds
 
-                delegate: SettingAccountDelegate {}
-            }
+                    clip: true
 
-            Button {
-                Layout.fillWidth: true
+                    delegate: SettingAccountDelegate {}
+                }
 
-                id: addAccountButton
+                PButton {
+                    Layout.fillWidth: true
 
-                text: "Add Account"
-                flat: true
-                highlighted: true
+                    id: addAccountButton
+
+                    text: "Add Account"
+                    flat: true
+                }
             }
         }
     }
 
-    Page {
+    Item {
         id: generalForm
 
         parent: null
 
-        padding: 64
+        Item {
+            anchors.fill: parent
+            anchors.margins: 64
 
-        Column {
-            Switch {
-                text: "Use press and hold instead of right click"
-                checked: PSettings.pressAndHold
+            Column {
+                spacing: 8
 
-                onCheckedChanged: PSettings.pressAndHold = checked
-            }
+                CheckBox {
+                    text: "Use press and hold instead of right click"
+                    checked: PSettings.pressAndHold
 
-            Switch {
-                text: "Show tray icon"
-                checked: PSettings.showTray
+                    onCheckedChanged: PSettings.pressAndHold = checked
+                }
 
-                onCheckedChanged: PSettings.showTray = checked
-            }
+                CheckBox {
+                    text: "Show tray icon"
+                    checked: PSettings.showTray
 
-            Switch {
-                text: "Confirm on Exit"
-                checked: PSettings.confirmOnExit
+                    onCheckedChanged: PSettings.showTray = checked
+                }
 
-                onCheckedChanged: PSettings.confirmOnExit = checked
+                CheckBox {
+                    text: "Confirm on Exit"
+                    checked: PSettings.confirmOnExit
+
+                    onCheckedChanged: PSettings.confirmOnExit = !checked
+                }
             }
         }
     }
 
-    Page {
+    Item {
         id: appearanceForm
 
         parent: null
 
-        padding: 64
+        Item {
+            anchors.fill: parent
+            anchors.margins: 64
 
-        Column {
-            Switch {
-                text: "Dark theme"
-                checked: PSettings.darkTheme
+            Column {
+                spacing: 8
 
-                onCheckedChanged: PSettings.darkTheme = checked
+                CheckBox {
+                    text: "Dark theme"
+                    checked: PSettings.darkTheme
+
+                    onCheckedChanged: PSettings.darkTheme = checked
+                }
             }
         }
     }
 
-    Page {
+    Item {
         id: aboutForm
 
         parent: null
 
-        padding: 64
+        Item {
+            anchors.fill: parent
+            anchors.margins: 64
 
-        ColumnLayout {
-            spacing: 16
-            Image {
-                Layout.preferredWidth: 64
-                Layout.preferredHeight: 64
+            ColumnLayout {
+                spacing: 16
+                Image {
+                    Layout.preferredWidth: 64
+                    Layout.preferredHeight: 64
 
-                source: "qrc:/assets/img/icon.png"
-            }
-            Label {
-                text: "Progressive Chat, an IM client for the Matrix protocol."
-            }
-            Label {
-                text: "Released under GNU General Public License, version 3."
+                    source: "qrc:/assets/img/icon.png"
+                }
+                Label {
+                    text: "Progressive Chat, an IM client for the Matrix protocol."
+                }
+                Label {
+                    text: "Released under GNU General Public License, version 3."
+                }
             }
         }
     }
@@ -168,7 +183,7 @@ Page {
         }
     }
 
-    StackView {
+    PScreenStack {
         anchors.fill: parent
         anchors.leftMargin: settingDrawer.width
 
@@ -177,9 +192,3 @@ Page {
         initialItem: aboutForm
     }
 }
-
-
-/*##^## Designer {
-    D{i:0;autoSize:true;height:480;width:640}
-}
- ##^##*/

@@ -1,14 +1,16 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Side navigation button (Qt 5.6 safe).
 import QtQuick 2.6
-import QtQuick.Controls 2.0
 import QtQuick.Layouts 1.2
-import QtQuick.Controls.Material 2.0
+
+import Progressive.Style 0.1
 
 import "qrc:/js/util.js" as Util
 
-ItemDelegate {
+PItemDelegate {
     property var page
     property bool selected: stackView.currentItem === page
-    property color highlightColor: Material.accent
+    property color highlightColor: PPalette.accent
 
     Rectangle {
         width: selected ? 4 : 0

@@ -6,3 +6,9 @@ ScrollHelper 2.0 ScrollHelper.qml
 AutoListView 2.0 AutoListView.qml
 AutoTextField 2.0 AutoTextField.qml
 SplitView 2.0 SplitView.qml
+PButton 2.0 PButton.qml
+PItemDelegate 2.0 PItemDelegate.qml
+PCircleButton 2.0 PCircleButton.qml
+PDialog 2.0 PDialog.qml
+PScreenStack 2.0 PScreenStack.qml
+PDrawer 2.0 PDrawer.qml

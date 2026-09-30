@@ -1,10 +1,10 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
-import QtQuick.Controls.Material 2.0
 
 import Progressive 0.1
 import Progressive.Setting 0.1
+import Progressive.Style 0.1
 
 import Progressive.Component 2.0
 
@@ -67,7 +67,7 @@ RowLayout {
 
                 visible: messageRow.avatarVisible
                 text: author.displayName
-                Material.foreground: Material.accent
+                foreground: PPalette.accent
                 coloredBackground: highlighted
                 font.bold: true
 
@@ -83,18 +83,18 @@ RowLayout {
 
                 id: contentLabel
 
-                text: (highlighted  ? "<style>a{color: white;} .user-pill{color: white}</style>" : "<style>a{color: " + Material.accent + ";} .user-pill{color: " + Material.accent + "}</style>") + display
+                text: (highlighted  ? "<style>a{color: white;} .user-pill{color: white}</style>" : "<style>a{color: " + PPalette.accent + ";} .user-pill{color: " + PPalette.accent + "}</style>") + display
 
                 visible: isText
-                color: highlighted ? "white": Material.foreground
+                color: highlighted ? "white" : PPalette.foreground
 
                 font.family: authorLabel.font.family
                 font.pointSize: 10
                 selectByMouse: true
                 readOnly: true
-                wrapMode: Label.Wrap
-                selectedTextColor: highlighted ? Material.accent : "white"
-                selectionColor: highlighted ? "white" : Material.accent
+                wrapMode: Text.Wrap
+                selectedTextColor: highlighted ? PPalette.accent : "white"
+                selectionColor: highlighted ? "white" : PPalette.accent
                 textFormat: Text.RichText
 
                 onLinkActivated: Qt.openUrlExternally(link)
@@ -130,7 +130,7 @@ RowLayout {
                     visible: userMarker.length > 5
                     text: userMarker.length - 5 + "+"
                     coloredBackground: highlighted
-                    Material.foreground: "grey"
+                    foreground: "grey"
                     font.pointSize: 8
                 }
 
@@ -163,7 +163,7 @@ RowLayout {
                     visible: Math.abs(time - aboveTime) > 600000 || index == 0
                     text: Qt.formatTime(time, "hh:mm")
                     coloredBackground: highlighted
-                    Material.foreground: "grey"
+                    foreground: "grey"
                     font.pointSize: 8
                 }
             }
@@ -234,11 +234,11 @@ RowLayout {
 
                     onClicked: {
                         if (downloadable.downloaded)
-                            spectralController.playAudio(progressInfo.localPath)
+                            progressiveController.playAudio(progressInfo.localPath)
                         else
                         {
                             playOnFinished = true
-                            currentRoom.downloadFile(eventId, StandardPaths.writableLocation(StandardPaths.CacheLocation) + "/" + eventId.replace(":", "_") + ".tmp")
+                            currentRoom.downloadFile(eventId, cacheLocation + "/" + eventId.replace(":", "_") + ".tmp")
                         }
                     }
                 }
@@ -246,7 +246,7 @@ RowLayout {
                 background: DownloadableContent {
                     id: downloadable
 
-                    onDownloadedChanged: downloaded && playOnFinished ? spectralController.playAudio(progressInfo.localPath) : {}
+                    onDownloadedChanged: downloaded && playOnFinished ? progressiveController.playAudio(progressInfo.localPath) : {}
 
                     Component.onCompleted: {
                         messageRow.saveFileAs.connect(saveFileAs)

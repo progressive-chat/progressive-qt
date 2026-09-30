@@ -2,6 +2,7 @@
 
 #include <QBitmap>
 #include <QGraphicsOpacityEffect>
+#include <QPainterPath>
 #include <QRect>
 
 ImageItem::ImageItem(QQuickItem *parent) : QQuickPaintedItem(parent) {}

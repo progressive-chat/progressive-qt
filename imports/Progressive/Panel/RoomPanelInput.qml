@@ -1,12 +1,13 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
+import QtQuick.Controls.Styles 1.1
 import QtQuick.Layouts 1.2
-import QtQuick.Controls.Material 2.0
 
 import Progressive.Component 2.0
 import Progressive.Component.Emoji 2.0
 import Progressive.Effect 2.0
 import Progressive.Setting 0.1
+import Progressive.Style 0.1
 
 import Progressive 0.1
 
@@ -30,21 +31,37 @@ Rectangle {
         elevation: 2
     }
 
-    Popup {
+    Label {
+        anchors.bottom: parent.top
+        anchors.left: parent.left
+        anchors.margins: 8
+
+        visible: currentRoom && currentRoom.hasUsersTyping
+        text: currentRoom ? currentRoom.usersTyping : ""
+        color: PPalette.secondaryText
+        font.pointSize: 8
+    }
+
+    Item {
         x: 0
         y: -height - 10
         width: Math.min(userAutoCompleteListView.contentWidth, parent.width)
         height: 36
-        padding: 0
-
-        Material.elevation: 2
 
         id: userAutoComplete
 
         visible: isAutoCompleting && autoCompleteModel.length !== 0
 
-        contentItem: ListView {
+        Rectangle {
+            anchors.fill: parent
+            color: PPalette.card
+            border.color: PPalette.secondaryText
+        }
+
+        ListView {
             id: userAutoCompleteListView
+
+            anchors.fill: parent
 
             model: autoCompleteModel
 
@@ -55,17 +72,19 @@ Rectangle {
             highlightFollowsCurrentItem: true
 
             highlight: Rectangle {
-                color: Material.accent
+                color: PPalette.accent
                 opacity: 0.4
             }
 
-            delegate: ItemDelegate {
+            delegate: PItemDelegate {
                 property string displayName: modelData.displayName
 
                 height: parent.height
-                padding: 4
+                width: 160
 
-                contentItem: Row {
+                Row {
+                    anchors.fill: parent
+                    anchors.margins: 4
                     spacing: 8
                     ImageItem {
                         width: parent.height
@@ -78,8 +97,6 @@ Rectangle {
                         verticalAlignment: Text.AlignVCenter
                     }
                 }
-
-                text: modelData.displayName
 
                 onClicked: {
                     userAutoCompleteListView.currentIndex = index
@@ -94,7 +111,7 @@ Rectangle {
         height: parent.height
 
         opacity: 0.2
-        color: Material.accent
+        color: PPalette.accent
     }
 
     RowLayout {
@@ -102,7 +119,7 @@ Rectangle {
 
         spacing: 0
 
-        ItemDelegate {
+        PItemDelegate {
             Layout.preferredWidth: 48
             Layout.preferredHeight: 48
 
@@ -122,7 +139,7 @@ Rectangle {
             }
         }
 
-        ItemDelegate {
+        PItemDelegate {
             Layout.preferredWidth: 48
             Layout.preferredHeight: 48
 
@@ -140,26 +157,31 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 48
 
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
-            clip: true
+            horizontalScrollBarPolicy: Qt.ScrollBarAlwaysOff
 
             TextArea {
                 property real progress: 0
 
                 id: inputField
 
+                x: 16
+                width: parent.width - 16
+                height: parent.height
+
                 wrapMode: Text.Wrap
-                placeholderText: isReply ? "Reply to " + replyUserID : "Send a Message"
-                leftPadding: 16
-                topPadding: 0
-                bottomPadding: 0
                 selectByMouse: true
-                verticalAlignment: TextEdit.AlignVCenter
+                frameVisible: false
 
                 text: currentRoom ? currentRoom.cachedInput : ""
 
-                background: Item {
+                Text {
+                    anchors.fill: parent
+
+                    text: isReply ? "Reply to " + replyUserID : "Send a Message"
+                    color: PPalette.secondaryText
+                    verticalAlignment: Text.AlignVCenter
+
+                    visible: inputField.text === "" && !inputField.activeFocus
                 }
 
                 Timer {
@@ -178,13 +200,8 @@ Rectangle {
 
                     repeat: true
                     interval: 5000
-                    triggeredOnStart: true
                     onTriggered: currentRoom.sendTypingNotification(true)
                 }
-
-                ToolTip.visible: currentRoom
-                                 && currentRoom.hasUsersTyping
-                ToolTip.text: currentRoom ? currentRoom.usersTyping : ""
 
                 Keys.onReturnPressed: {
                     if (event.modifiers & Qt.ShiftModifier) {
@@ -221,6 +238,8 @@ Rectangle {
 
                 onTextChanged: {
                     timeoutTimer.restart()
+                    if (currentRoom && !repeatTimer.running)
+                        currentRoom.sendTypingNotification(true)
                     repeatTimer.start()
                     currentRoom.cachedInput = text
 
@@ -292,7 +311,7 @@ Rectangle {
             }
         }
 
-        ItemDelegate {
+        PItemDelegate {
             Layout.preferredWidth: 48
             Layout.preferredHeight: 48
 
@@ -312,8 +331,6 @@ Rectangle {
                 height: 320
 
                 id: emojiPicker
-
-                Material.elevation: 2
 
                 textArea: inputField
             }

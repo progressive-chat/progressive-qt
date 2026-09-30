@@ -1,13 +1,24 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
-import QtQuick.Controls.Material 2.0
 
 import Progressive 0.1
+import Progressive.Style 0.1
 
-Popup {
+Item {
     property var textArea
     property string emojiCategory: "people"
+
+    visible: false
+
+    function open() { visible = true }
+    function close() { visible = false }
+
+    Rectangle {
+        anchors.fill: parent
+        color: PPalette.card
+        border.color: PPalette.secondaryText
+    }
 
     EmojiModel {
         id: emojiModel
@@ -46,15 +57,13 @@ Popup {
                     onClicked: textArea.insert(textArea.cursorPosition, modelData)
                 }
             }
-
-            ScrollBar.vertical: ScrollBar {}
         }
 
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 2
 
-            color: Material.accent
+            color: PPalette.accent
         }
 
         Row {

@@ -13,6 +13,7 @@ Item {
     property bool showTray: true
     property bool confirmOnExit: true
     property bool darkTheme: false
+    property bool richText: true
 
     property bool _ready: false
 
@@ -32,6 +33,7 @@ Item {
                 else if (k === "showTray") showTray = v === "1";
                 else if (k === "confirmOnExit") confirmOnExit = v === "1";
                 else if (k === "darkTheme") darkTheme = v === "1";
+                else if (k === "richText") richText = v === "1";
             }
         });
     }
@@ -44,6 +46,7 @@ Item {
             tx.executeSql("INSERT OR REPLACE INTO settings(k, v) VALUES(?, ?)", ["showTray", showTray ? "1" : "0"]);
             tx.executeSql("INSERT OR REPLACE INTO settings(k, v) VALUES(?, ?)", ["confirmOnExit", confirmOnExit ? "1" : "0"]);
             tx.executeSql("INSERT OR REPLACE INTO settings(k, v) VALUES(?, ?)", ["darkTheme", darkTheme ? "1" : "0"]);
+            tx.executeSql("INSERT OR REPLACE INTO settings(k, v) VALUES(?, ?)", ["richText", richText ? "1" : "0"]);
         });
     }
 
@@ -51,6 +54,7 @@ Item {
     onShowTrayChanged: save()
     onConfirmOnExitChanged: save()
     onDarkThemeChanged: save()
+    onRichTextChanged: save()
 
     Component.onCompleted: { load(); _ready = true; }
 }

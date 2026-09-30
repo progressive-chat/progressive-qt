@@ -38,6 +38,10 @@ using optional = std::experimental::optional<T>;
 #endif
 
 // Enable std::unordered_map<QString, T>
+// NOTE (Progressive Chat Qt): Qt >= 5.14 already specializes std::hash for
+// QString (QT_SPECIALIZE_STD_HASH_TO_CALL_QHASH), so only define our own on
+// older Qt (e.g. the Qt 5.6 target) to avoid a redefinition error.
+#if (QT_VERSION < QT_VERSION_CHECK(5, 14, 0))
 namespace std
 {
     template <> struct hash<QString>
@@ -52,6 +56,7 @@ namespace std
         }
     };
 }
+#endif
 
 class QVariant;
 

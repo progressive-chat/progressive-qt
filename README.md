@@ -8,13 +8,17 @@ being **runnable on old devices** and, in the end, also **more feature rich**.
 - Upstream: [NeoChat](https://invent.kde.org/network/neochat) (KDE),
   via [Spectral](https://gitlab.com/spectral-im/spectral/)
   (`spectral-im/spectral`, first commit Feb 2018).
+- Base commit: Spectral tag **464**
+  (`8c29382b3eb7a24c5abe3196c78a546329bb75d9`, 2018-10-25,
+  "Update org.eu.encom.spectral.appdata.xml").
 
 ## History / what this is
 
 At the start, this codebase had the name **Spectral** and it worked on
 **Qt 5.10 – Qt 5.11** (qmake, C++14, Qt Quick Controls 2).
 
-This port starts from Spectral tag **464** (Oct 2018, still named Spectral,
+This port starts from Spectral tag **464**
+(`8c29382`, Oct 2018, still named Spectral,
 still Qt 5.10+ per `BUILD.md`) and rebrands the client to
 **Progressive Chat**.
 

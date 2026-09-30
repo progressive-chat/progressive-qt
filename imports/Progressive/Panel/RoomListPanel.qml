@@ -1,5 +1,7 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
+
+import Progressive.Component 2.0
 
 import SortFilterProxyModel 0.2
 
@@ -53,24 +55,12 @@ RoomListPanelForm {
         ]
     }
 
-    Shortcut {
-        sequence: StandardKey.Find
-        onActivated: searchField.forceActiveFocus()
-    }
-
-    Dialog {
+    PDialog {
         property var currentRoom
 
         id: inviteDialog
-        parent: ApplicationWindow.overlay
-
-        x: (window.width - width) / 2
-        y: (window.height - height) / 2
-        width: 360
 
         title: "Action Required"
-        modal: true
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         contentItem: Label { text: "Accept this invitation?" }
 

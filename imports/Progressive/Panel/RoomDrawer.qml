@@ -1,31 +1,35 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
-import QtQuick.Controls.Material 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
 
 import Progressive.Component 2.0
+import Progressive.Style 0.1
 
 import Progressive 0.1
 
 import "qrc:/js/util.js" as Util
 
-Drawer {
+PDrawer {
     property var room
 
-    id: roomDrawer
+    id: drawer
 
-    edge: Qt.RightEdge
-    interactive: false
-
-    ToolButton {
-        contentItem: MaterialIcon { icon: "\ue5c4" }
-
-        onClicked: roomDrawer.close()
-    }
+    panelWidth: 320
 
     ColumnLayout {
+        parent: drawer.panel
+
         anchors.fill: parent
         anchors.margins: 32
+
+        PItemDelegate {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 48
+
+            contentItem: MaterialIcon { icon: "\ue5c4" }
+
+            onClicked: drawer.close()
+        }
 
         ImageItem {
             Layout.preferredWidth: 96
@@ -33,13 +37,13 @@ Drawer {
             Layout.alignment: Qt.AlignHCenter
 
             hint: room ? room.displayName : "No name"
-            image: spectralController.safeImage(room ? room.avatar : null)
+            image: progressiveController.safeImage(room ? room.avatar : null)
         }
 
         Label {
             Layout.fillWidth: true
 
-            wrapMode: Label.Wrap
+            wrapMode: Text.Wrap
             horizontalAlignment: Text.AlignHCenter
             text: room && room.id ? room.id : ""
         }
@@ -47,7 +51,7 @@ Drawer {
         Label {
             Layout.fillWidth: true
 
-            wrapMode: Label.Wrap
+            wrapMode: Text.Wrap
             horizontalAlignment: Text.AlignHCenter
             text: room && room.canonicalAlias ? room.canonicalAlias : "No Canonical Alias"
         }
@@ -55,7 +59,7 @@ Drawer {
         Label {
             Layout.fillWidth: true
 
-            wrapMode: Label.Wrap
+            wrapMode: Text.Wrap
             horizontalAlignment: Text.AlignHCenter
             text: room ? room.memberCount + " Members" : "No Member Count"
         }
@@ -70,9 +74,9 @@ Drawer {
                 text: room && room.name ? room.name : ""
             }
 
-            ItemDelegate {
-                Layout.preferredWidth: height
-                Layout.preferredHeight: parent.height
+            PItemDelegate {
+                Layout.preferredWidth: 48
+                Layout.preferredHeight: 48
 
                 contentItem: MaterialIcon { icon: "\ue5ca" }
 
@@ -91,9 +95,9 @@ Drawer {
                 text: room && room.topic ? room.topic : ""
             }
 
-            ItemDelegate {
-                Layout.preferredWidth: height
-                Layout.preferredHeight: parent.height
+            PItemDelegate {
+                Layout.preferredWidth: 48
+                Layout.preferredHeight: 48
 
                 contentItem: MaterialIcon { icon: "\ue5ca" }
 
@@ -112,13 +116,13 @@ Drawer {
             boundsBehavior: Flickable.DragOverBounds
 
             model: UserListModel {
-                room: roomDrawer.room
+                room: drawer.room
             }
 
             delegate: Column {
                 property bool expanded: false
 
-                ItemDelegate {
+                PItemDelegate {
                     width: userListView.width
                     height: 48
 
@@ -151,14 +155,12 @@ Drawer {
                     anchors.horizontalCenter: parent.horizontalCenter
 
                     spacing: 0
-
                     clip: true
 
-                    Button {
+                    PButton {
                         Layout.fillWidth: true
 
                         text: "Kick"
-                        highlighted: true
 
                         onClicked: room.kickMember(userId)
                     }
@@ -168,39 +170,29 @@ Drawer {
                     }
                 }
             }
-
-            ScrollBar.vertical: ScrollBar {}
         }
 
-        Button {
+        PButton {
             Layout.fillWidth: true
 
             text: "Invite User"
-            flat: true
-            highlighted: true
 
             onClicked: inviteUserDialog.open()
-
-            Dialog {
-                x: (window.width - width) / 2
-                y: (window.height - height) / 2
-                width: 360
-
-                id: inviteUserDialog
-
-                parent: ApplicationWindow.overlay
-
-                title: "Input User ID"
-                modal: true
-                standardButtons: Dialog.Ok | Dialog.Cancel
-
-                contentItem: AutoTextField {
-                    id: inviteUserDialogTextField
-                    placeholderText: "@bot:matrix.org"
-                }
-
-                onAccepted: room.inviteToRoom(inviteUserDialogTextField.text)
-            }
         }
+    }
+
+    PDialog {
+        parent: drawer
+
+        id: inviteUserDialog
+
+        title: "Input User ID"
+
+        contentItem: AutoTextField {
+            id: inviteUserDialogTextField
+            placeholderText: "@bot:matrix.org"
+        }
+
+        onAccepted: room.inviteToRoom(inviteUserDialogTextField.text)
     }
 }

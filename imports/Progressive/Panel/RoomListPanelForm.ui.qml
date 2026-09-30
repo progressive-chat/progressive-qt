@@ -1,13 +1,13 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 import QtQuick.Layouts 1.2
 import QtGraphicalEffects 1.0
-import QtQuick.Controls.Material 2.0
 import QtQml.Models 2.2
 
 import Progressive.Component 2.0
 import Progressive.Menu 2.0
 import Progressive.Effect 2.0
+import Progressive.Style 0.1
 
 import Progressive 0.1
 import Progressive.Setting 0.1
@@ -59,8 +59,8 @@ Rectangle {
                     color: "grey"
                 }
 
-                ItemDelegate {
-                    Layout.preferredWidth: height
+                PItemDelegate {
+                    Layout.preferredWidth: 48
                     Layout.fillHeight: true
 
                     visible: !miniMode && searchField.text
@@ -79,11 +79,7 @@ Rectangle {
 
                     id: searchField
 
-                    topPadding: 0
-                    bottomPadding: 0
                     placeholderText: "Search..."
-
-                    background: Item {}
                 }
             }
         }
@@ -99,8 +95,6 @@ Rectangle {
 
             boundsBehavior: Flickable.DragOverBounds
 
-            ScrollBar.vertical: ScrollBar {}
-
             delegate: RoomListDelegate {
                 width: parent.width
                 height: 64
@@ -108,16 +102,20 @@ Rectangle {
 
             section.property: "display"
             section.criteria: ViewSection.FullString
-            section.delegate: Label {
+            section.delegate: Item {
                 width: parent.width
                 height: 24
 
-                text: section
-                color: "grey"
-                leftPadding: miniMode ? undefined : 16
-                elide: Text.ElideRight
-                verticalAlignment: Text.AlignVCenter
-                horizontalAlignment: miniMode ? Text.AlignHCenter : undefined
+                Text {
+                    anchors.fill: parent
+                    anchors.leftMargin: miniMode ? 0 : 16
+
+                    text: section
+                    color: "grey"
+                    elide: Text.ElideRight
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: miniMode ? Text.AlignHCenter : Text.AlignLeft
+                }
             }
 
             RoomContextMenu { id: roomContextMenu }

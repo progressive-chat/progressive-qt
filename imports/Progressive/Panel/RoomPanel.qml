@@ -2,7 +2,7 @@ import QtQuick 2.6
 
 RoomPanelForm {
     roomHeader.onClicked: roomDrawer.open()
-    roomHeader.image: spectralController.safeImage(currentRoom ? currentRoom.avatar : null)
+    roomHeader.image: progressiveController.safeImage(currentRoom ? currentRoom.avatar : null)
     roomHeader.topic: currentRoom ? (currentRoom.topic).replace(/(\r\n\t|\n|\r\t)/gm,"") : ""
 
     sortedMessageEventModel.onModelReset: {

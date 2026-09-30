@@ -1,17 +1,40 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Rich text label for the timeline (Qt 5.6 safe).
+// Replaces the Controls 2 Label based version (no padding/background there).
 import QtQuick 2.6
-import QtQuick.Controls 2.0
-import QtQuick.Controls.Material 2.0
 
 import Progressive.Setting 0.1
+import Progressive.Style 0.1
 
-Label {
-    property bool coloredBackground
+Item {
+    property alias text: label.text
+    property alias font: label.font
+    property color foreground: PPalette.foreground
+    property bool coloredBackground: false
+    property var background
 
-    color: coloredBackground ? "white": Material.foreground
+    implicitWidth: label.implicitWidth
+    implicitHeight: label.implicitHeight
 
-    wrapMode: Label.Wrap
-    linkColor: coloredBackground ? "white" : Material.accent
-    textFormat: Text.RichText
+    onBackgroundChanged: {
+        if (background) {
+            background.parent = root
+            background.anchors.fill = root
+        }
+    }
 
-    onLinkActivated: Qt.openUrlExternally(link)
+    id: root
+
+    Text {
+        id: label
+
+        anchors.fill: parent
+
+        color: root.coloredBackground ? "white" : root.foreground
+        wrapMode: Text.Wrap
+        linkColor: root.coloredBackground ? "white" : PPalette.accent
+        textFormat: Text.RichText
+
+        onLinkActivated: Qt.openUrlExternally(link)
+    }
 }

@@ -214,10 +214,15 @@ void Controller::copyToClipboard(const QString& text) {
 }
 
 void Controller::playAudio(QUrl localFile) {
+#ifdef PROGRESSIVE_NO_MULTIMEDIA
+  Q_UNUSED(localFile);
+  qWarning() << "Audio playback is disabled (built without QtMultimedia)";
+#else
   QMediaPlayer* player = new QMediaPlayer;
   player->setMedia(localFile);
   player->play();
   connect(player, &QMediaPlayer::stateChanged, [=] { player->deleteLater(); });
+#endif
 }
 
 QImage Controller::safeImage(QImage image) {

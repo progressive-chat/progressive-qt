@@ -1,5 +1,5 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.0
+import QtQuick.Controls 1.4
 
 Menu {
     property var row: null
@@ -20,20 +20,17 @@ Menu {
     }
     MenuItem {
         visible: isFile
-        height: visible ? undefined : 0
         text: "Open Externally"
 
         onTriggered: row.openExternally()
     }
     MenuItem {
         visible: isFile
-        height: visible ? undefined : 0
         text: "Save As"
 
         onTriggered: row.saveFileAs()
     }
     MenuItem {
-        height: visible ? undefined : 0
         text: "Reply"
 
         onTriggered: {
@@ -45,7 +42,6 @@ Menu {
     }
     MenuItem {
         visible: model && model.author === currentRoom.localUser
-        height: visible ? undefined : 0
         text: "Redact"
 
         onTriggered: currentRoom.redactEvent(model.eventId)
