@@ -1,0 +1,19 @@
+# qmake / make
+*.o
+*.so
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+Makefile*
+progressive-chat
+android-build/
+android-libprogressive-chat.so-deployment-settings.json
+
+# Qt Creator
+*.pro.user
+*.pro.user.*
+
+# Android
+bin/
+gen/
+local.properties

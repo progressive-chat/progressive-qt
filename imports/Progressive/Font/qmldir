@@ -1,0 +1,3 @@
+module Progressive.Font
+singleton MaterialFont 0.1 MaterialFont.qml
+

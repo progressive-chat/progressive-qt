@@ -1,0 +1,12 @@
+build
+.kdev4
+
+# Qt Creator project file
+*.user
+
+# qmake derivatives
+Makefile*
+object_script.*
+.qmake*
+debug/
+release/

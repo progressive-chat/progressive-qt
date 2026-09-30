@@ -1,0 +1,79 @@
+{{>preamble}}
+#pragma once
+
+{{#operations}}#include "jobs/basejob.h"
+{{/operations}}{{#models}}#include "converters.h"
+{{/models}}
+{{#imports}}#include {{_}}
+{{/imports}}
+namespace QMatrixClient
+{
+{{#models}}    // Data structures
+{{#    model}}{{#description}}
+    /// {{_}}{{/description}}
+    struct {{name}}{{#parents?}} : {{#parents}}{{name}}{{>cjoin}}{{/parents}}{{/parents?}}
+    {
+{{#vars}}{{#description}}        /// {{_}}
+{{/description}}        {{>maybeOmittableType}} {{nameCamelCase}};
+{{/vars}}{{#propertyMap}}{{#description}}        /// {{_}}
+{{/description}}        {{>maybeOmittableType}} {{nameCamelCase}};
+{{/propertyMap}}    };
+{{#in?}}
+    QJsonObject toJson(const {{name}}& pod);
+{{/in?}}{{#out?}}
+    template <> struct FromJsonObject<{{name}}>
+    {
+        {{name}} operator()({{^propertyMap}}const QJsonObject&{{/propertyMap}}{{#propertyMap}}QJsonObject{{/propertyMap}} jo) const;
+    };
+{{/    out?}}{{/model}}
+{{/models}}{{#operations}}    // Operations
+{{#    operation}}{{#summary}}
+    /// {{summary}}{{#description?}}{{!add a linebreak between summary and description if both exist}}
+    ///{{/description?}}{{/summary}}{{#description}}
+    /// {{_}}{{/description}}
+    class {{camelCaseOperationId}}Job : public BaseJob
+    {
+        public:{{#models}}
+            // Inner data structures
+{{#            model}}{{#description}}
+            /// {{_}}{{/description}}
+            struct {{name}}{{#parents?}} : {{#parents}}{{name}}{{>cjoin}}{{/parents}}{{/parents?}}
+            {
+{{#vars}}{{#description}}                /// {{_}}
+{{/description}}                {{>maybeOmittableType}} {{nameCamelCase}};
+{{/vars}}{{#propertyMap}}{{#description}}                /// {{_}}
+{{/description}}                {{>maybeOmittableType}} {{nameCamelCase}};
+{{/propertyMap}}            };
+{{/            model}}
+            // Construction/destruction
+{{/        models}}{{#allParams?}}
+            /*! {{summary}}{{#allParams}}
+             * \param {{nameCamelCase}}{{#description}}
+             *   {{_}}{{/description}}{{/allParams}}
+             */{{/allParams?}}
+            explicit {{camelCaseOperationId}}Job({{#allParams}}{{>joinedParamDecl}}{{/allParams}});{{^bodyParams}}
+
+            /*! Construct a URL without creating a full-fledged job object
+             *
+             * This function can be used when a URL for
+             * {{camelCaseOperationId}}Job is necessary but the job
+             * itself isn't.
+             */
+            static QUrl makeRequestUrl(QUrl baseUrl{{#allParams?}}, {{#allParams}}{{>joinedParamDecl}}{{/allParams}}{{/allParams?}});
+{{/bodyParams}}{{#        responses}}{{#normalResponse?}}{{#allProperties?}}
+            ~{{camelCaseOperationId}}Job() override;
+
+            // Result properties
+{{#allProperties}}{{#description}}
+            /// {{_}}{{/description}}
+            {{>maybeCrefType}} {{paramName}}(){{^moveOnly}} const{{/moveOnly}};{{/allProperties}}
+
+        protected:
+            Status {{#producesNonJson?}}parseReply(QNetworkReply* reply){{/producesNonJson?}}{{^producesNonJson?}}parseJson(const QJsonDocument& data){{/producesNonJson?}} override;
+
+        private:
+            class Private;
+            QScopedPointer<Private> d;{{/allProperties?}}{{/normalResponse?}}{{/responses}}
+    };
+{{/operation}}{{/operations}}{{!skip EOL
+}}} // namespace QMatrixClient

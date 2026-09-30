@@ -1,0 +1,120 @@
+{{>preamble}}
+#include "{{filenameBase}}.h"
+{{^models}}
+#include "converters.h"
+{{/models}}{{#operations}}
+{{#producesNonJson?}}#include <QtNetwork/QNetworkReply>
+{{/producesNonJson?}}#include <QtCore/QStringBuilder>
+{{/operations}}
+using namespace QMatrixClient;
+{{#models.model}}{{#in?}}
+QJsonObject QMatrixClient::toJson(const {{qualifiedName}}& pod)
+{
+    QJsonObject jo{{#propertyMap}} = toJson(pod.{{nameCamelCase}}){{/propertyMap}};{{#vars}}
+    addParam<{{^required?}}IfNotEmpty{{/required?}}>(jo, QStringLiteral("{{baseName}}"), pod.{{nameCamelCase}});{{/vars}}
+    return jo;
+}
+{{/in?}}{{#out?}}
+{{qualifiedName}} FromJsonObject<{{qualifiedName}}>::operator()({{^propertyMap}}const QJsonObject&{{/propertyMap}}{{#propertyMap}}QJsonObject{{/propertyMap}} jo) const
+{
+    {{qualifiedName}} result;
+{{#vars}}    result.{{nameCamelCase}} =
+        fromJson<{{dataType.qualifiedName}}>(jo.{{#propertyMap}}take{{/propertyMap}}{{^propertyMap}}value{{/propertyMap}}("{{baseName}}"_ls));
+{{/vars}}{{#propertyMap}}
+    result.{{nameCamelCase}} = fromJson<{{dataType.qualifiedName}}>(jo);{{/propertyMap}}
+    return result;
+}
+{{/out?}}{{/models.model}}{{#operations}}
+static const auto basePath = QStringLiteral("{{basePathWithoutHost}}");
+{{#    operation}}{{#models}}
+namespace QMatrixClient
+{
+    // Converters
+{{#model}}{{#in?}}
+    QJsonObject toJson(const {{qualifiedName}}& pod)
+    {
+        QJsonObject jo{{#propertyMap}} = toJson(pod.{{nameCamelCase}}){{/propertyMap}};{{#vars}}
+        addParam<{{^required?}}IfNotEmpty{{/required?}}>(jo, QStringLiteral("{{baseName}}"), pod.{{nameCamelCase}});{{/vars}}
+        return jo;
+    }
+{{/in?}}{{#out?}}
+    template <> struct FromJsonObject<{{qualifiedName}}>
+    {
+        {{qualifiedName}} operator()({{^propertyMap}}const QJsonObject&{{/propertyMap}}{{#propertyMap}}QJsonObject{{/propertyMap}} jo) const
+        {
+            {{qualifiedName}} result;
+{{#vars}}            result.{{nameCamelCase}} =
+                fromJson<{{dataType.qualifiedName}}>(jo.{{#propertyMap}}take{{/propertyMap}}{{^propertyMap}}value{{/propertyMap}}("{{baseName}}"_ls));
+{{/vars}}{{#propertyMap}}
+            result.{{nameCamelCase}} = fromJson<{{dataType.qualifiedName}}>(jo);{{/propertyMap}}
+            return result;
+        }
+    };
+{{/out?}}{{/model}}} // namespace QMatrixClient
+{{/    models}}{{#responses}}{{#normalResponse?}}{{#allProperties?}}
+class {{camelCaseOperationId}}Job::Private
+{
+    public:{{#allProperties}}
+        {{>maybeOmittableType}} {{paramName}};{{/allProperties}}
+};
+{{/    allProperties?}}{{/normalResponse?}}{{/responses}}{{#queryParams?}}
+BaseJob::Query queryTo{{camelCaseOperationId}}({{#queryParams}}{{>joinedParamDef}}{{/queryParams}})
+{
+    BaseJob::Query _q;{{#queryParams}}
+    addParam<{{^required?}}IfNotEmpty{{/required?}}>(_q, QStringLiteral("{{baseName}}"), {{paramName}});{{/queryParams}}
+    return _q;
+}
+{{/queryParams?}}{{^bodyParams}}
+QUrl {{camelCaseOperationId}}Job::makeRequestUrl(QUrl baseUrl{{#allParams?}}, {{#allParams}}{{>joinedParamDef}}{{/allParams}}{{/allParams?}})
+{
+    return BaseJob::makeRequestUrl(std::move(baseUrl),
+            basePath{{#pathParts}} % {{_}}{{/pathParts}}{{#queryParams?}},
+            queryTo{{camelCaseOperationId}}({{>passQueryParams}}){{/queryParams?}});
+}
+{{/    bodyParams}}
+static const auto {{camelCaseOperationId}}JobName = QStringLiteral("{{camelCaseOperationId}}Job");
+
+{{camelCaseOperationId}}Job::{{camelCaseOperationId}}Job({{#allParams}}{{>joinedParamDef}}{{/allParams}})
+    : BaseJob(HttpVerb::{{#_cap}}{{#_tolower}}{{httpMethod}}{{/_tolower}}{{/_cap}}, {{camelCaseOperationId}}JobName,
+        basePath{{#pathParts}} % {{_}}{{/pathParts}}{{#queryParams?}},
+        queryTo{{camelCaseOperationId}}({{>passQueryParams}}){{/queryParams?}}{{#skipAuth}}{{#queryParams?}},
+        {}{{/queryParams?}}, false{{/skipAuth}}){{#responses}}{{#normalResponse?}}{{#allProperties?}}
+    , d(new Private){{/allProperties?}}{{/normalResponse?}}{{/responses}}
+{
+{{#headerParams?}}{{#headerParams}}    setRequestHeader("{{baseName}}", {{paramName}}.toLatin1());
+{{/headerParams}}
+{{/headerParams?
+}}{{#bodyParams?
+}}{{#inlineBody}}    setRequestData(Data({{!
+                        }}{{#consumesNonJson?}}{{nameCamelCase}}{{/consumesNonJson?
+                        }}{{^consumesNonJson?}}toJson({{nameCamelCase}}){{/consumesNonJson?}}));{{/inlineBody
+}}{{^inlineBody}}    QJsonObject _data;{{#bodyParams}}
+    addParam<{{^required?}}IfNotEmpty{{/required?}}>(_data, QStringLiteral("{{baseName}}"), {{paramName}});{{/bodyParams}}
+    setRequestData(_data);{{/inlineBody}}
+{{/bodyParams?}}{{#producesNonJson?}}    setExpectedContentTypes({ {{#produces}}"{{_}}"{{>cjoin}}{{/produces}} });
+{{/producesNonJson?}}}{{!<- mind the actual brace}}
+{{#    responses}}{{#normalResponse?}}{{#allProperties?}}
+{{camelCaseOperationId}}Job::~{{camelCaseOperationId}}Job() = default;
+{{#        allProperties}}
+{{>qualifiedMaybeCrefType}} {{camelCaseOperationId}}Job::{{paramName}}(){{^moveOnly}} const{{/moveOnly}}
+{
+    return {{#moveOnly}}std::move({{/moveOnly}}d->{{paramName}}{{#moveOnly}}){{/moveOnly}};
+}
+{{/        allProperties}}{{#producesNonJson?}}
+BaseJob::Status {{camelCaseOperationId}}Job::parseReply(QNetworkReply* reply)
+{
+    {{#headers}}d->{{paramName}} = reply->rawHeader("{{baseName}}");{{! We don't check for required headers yet }}
+    {{/headers}}{{#properties}}d->{{paramName}} = reply;{{/properties}}
+    return Success;
+}{{/       producesNonJson?}}{{^producesNonJson?}}
+BaseJob::Status {{camelCaseOperationId}}Job::parseJson(const QJsonDocument& data)
+{
+{{#inlineResponse}}    d->{{paramName}} = fromJson<{{dataType.name}}>(data);
+{{/inlineResponse}}{{^inlineResponse}}    auto json = data.object();
+{{#properties}}{{#required?}}    if (!json.contains("{{baseName}}"_ls))
+        return { JsonParseError,
+            "The key '{{baseName}}' not found in the response" };
+{{/required?}}    d->{{paramName}} = fromJson<{{dataType.name}}>(json.value("{{baseName}}"_ls));
+{{/properties}}{{/inlineResponse}}    return Success;
+}{{/       producesNonJson?}}
+{{/allProperties?}}{{/normalResponse?}}{{/responses}}{{/operation}}{{/operations}}

@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="chat.progressive.qt"
+          android:versionCode="1"
+          android:versionName="0.1.0"
+          android:installLocation="auto">
+    <!-- Qt 5.6 / androiddeployqt. minSdk 9 = Android 2.3 Gingerbread,
+         target 14 = Android 4.0 Ice Cream Sandwich (Qt 5.6 minimum). -->
+    <uses-sdk android:minSdkVersion="9" android:targetSdkVersion="14"/>
+    <supports-screens android:largeScreens="true"
+                      android:normalScreens="true"
+                      android:anyDensity="true"
+                      android:smallScreens="true"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <application android:name="org.qtproject.qt5.android.bindings.QtApplication"
+                 android:label="Progressive Chat"
+                 android:icon="@drawable/icon">
+        <activity android:name="org.qtproject.qt5.android.bindings.QtActivity"
+                  android:label="Progressive Chat"
+                  android:icon="@drawable/icon"
+                  android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|locale|fontScale|keyboard|keyboardHidden|navigation"
+                  android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <meta-data android:name="android.app.lib_name" android:value="progressive-chat"/>
+            <meta-data android:name="android.app.qt_sources_resource_id" android:resource="@array/qt_sources"/>
+            <meta-data android:name="android.app.repository" android:value="default"/>
+            <meta-data android:name="android.app.qt_libs_resource_id" android:resource="@array/qt_libs"/>
+            <meta-data android:name="android.app.bundled_in_lib_resource_id" android:resource="@array/bundled_in_lib"/>
+            <meta-data android:name="android.app.bundled_in_assets_resource_id" android:resource="@array/bundled_in_assets"/>
+            <meta-data android:name="android.app.libs_prefix" android:value="/data/data/chat.progressive.qt/qt-reserved-files/"/>
+        </activity>
+    </application>
+</manifest>
