@@ -2,6 +2,7 @@
 #define ROLEFILTER_H
 
 #include "filter.h"
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 namespace qqsfpm {
 

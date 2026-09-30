@@ -21,6 +21,7 @@
 #include "settings.h"
 
 #include <QtNetwork/QNetworkProxy>
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 Q_DECLARE_METATYPE(QNetworkProxy::ProxyType)
 

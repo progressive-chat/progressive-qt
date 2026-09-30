@@ -18,6 +18,8 @@
 
 #include "connectiondata.h"
 
+#include <QtCore/QDateTime>
+
 #include "networkaccessmanager.h"
 #include "logging.h"
 

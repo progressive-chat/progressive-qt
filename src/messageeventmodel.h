@@ -5,6 +5,7 @@
 #include "room.h"
 
 #include <QtCore/QAbstractListModel>
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 class MessageEventModel : public QAbstractListModel {
   Q_OBJECT

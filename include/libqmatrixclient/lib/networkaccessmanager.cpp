@@ -26,12 +26,15 @@ using namespace QMatrixClient;
 class NetworkAccessManager::Private
 {
     public:
+#ifndef QT_NO_SSL
         QList<QSslError> ignoredSslErrors;
+#endif
 };
 
 NetworkAccessManager::NetworkAccessManager(QObject* parent) : d(std::make_unique<Private>())
 { }
 
+#ifndef QT_NO_SSL
 QList<QSslError> NetworkAccessManager::ignoredSslErrors() const
 {
     return d->ignoredSslErrors;
@@ -46,6 +49,7 @@ void NetworkAccessManager::clearIgnoredSslErrors()
 {
     d->ignoredSslErrors.clear();
 }
+#endif
 
 static NetworkAccessManager* createNam()
 {
@@ -70,6 +74,11 @@ QNetworkReply* NetworkAccessManager::createRequest(Operation op,
 {
     auto reply =
             QNetworkAccessManager::createRequest(op, request, outgoingData);
+#ifdef QT_NO_SSL
+    // Qt built without OpenSSL: only the no-argument overload exists.
+    reply->ignoreSslErrors();
+#else
     reply->ignoreSslErrors(d->ignoredSslErrors);
+#endif
     return reply;
 }

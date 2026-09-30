@@ -138,7 +138,13 @@ QDBusArgument &operator<<(QDBusArgument &arg, const QImage &image) {
   int channels = i.isGrayscale() ? 1 : (i.hasAlphaChannel() ? 4 : 3);
   arg << i.depth() / channels;
   arg << channels;
+  // NOTE (Progressive Chat Qt): QImage::sizeInBytes() needs Qt >= 5.10;
+  // byteCount() works on the Qt 5.6 target too.
+#if (QT_VERSION < QT_VERSION_CHECK(5, 10, 0))
+  arg << QByteArray(reinterpret_cast<const char *>(i.bits()), i.byteCount());
+#else
   arg << QByteArray(reinterpret_cast<const char *>(i.bits()), i.sizeInBytes());
+#endif
   arg.endStructure();
   return arg;
 }

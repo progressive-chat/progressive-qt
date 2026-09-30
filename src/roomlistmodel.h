@@ -7,6 +7,7 @@
 #include "spectralroom.h"
 
 #include <QtCore/QAbstractListModel>
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 using namespace QMatrixClient;
 

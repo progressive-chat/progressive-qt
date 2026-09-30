@@ -164,10 +164,6 @@ Rectangle {
 
                 id: inputField
 
-                x: 16
-                width: parent.width - 16
-                height: parent.height
-
                 wrapMode: Text.Wrap
                 selectByMouse: true
                 frameVisible: false
@@ -241,7 +237,8 @@ Rectangle {
                     if (currentRoom && !repeatTimer.running)
                         currentRoom.sendTypingNotification(true)
                     repeatTimer.start()
-                    currentRoom.cachedInput = text
+                    if (currentRoom)
+                        currentRoom.cachedInput = text
 
                     if (cursorPosition !== autoCompleteBeginPosition && cursorPosition !== autoCompleteEndPosition) {
                         isAutoCompleting = false

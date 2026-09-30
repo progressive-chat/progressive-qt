@@ -84,7 +84,7 @@ Item {
                     text: "Confirm on Exit"
                     checked: PSettings.confirmOnExit
 
-                    onCheckedChanged: PSettings.confirmOnExit = !checked
+                    onCheckedChanged: PSettings.confirmOnExit = checked
                 }
             }
         }

@@ -100,6 +100,10 @@ class SpectralRoom : public Room {
  signals:
   void cachedInputChanged();
   void busyChanged();
+  // NOTE (Progressive Chat Qt): re-declared from QMatrixClient::Room —
+  // Qt 5.6 moc requires NOTIFY signals to exist in the class itself.
+  // Forwarded from the base signal in the constructor below.
+  void typingChanged();
   void inheritedAvatarChanged();  // https://bugreports.qt.io/browse/QTBUG-7684
   void hasFileUploadingChanged();
   void fileUploadingProgressChanged();

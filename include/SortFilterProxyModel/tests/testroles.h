@@ -3,6 +3,7 @@
 
 #include "proxyroles/singlerole.h"
 #include <QVariant>
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 class StaticRole : public qqsfpm::SingleRole
 {

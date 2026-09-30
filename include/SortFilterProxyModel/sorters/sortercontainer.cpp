@@ -2,6 +2,14 @@
 #include "sorter.h"
 #include <QtQml>
 
+// NOTE (Progressive Chat Qt): qmlWarning()/qmlInfo() need Qt >= 5.9;
+// fall back to qWarning()/qInfo() on the Qt 5.6 target.
+#if (QT_VERSION < QT_VERSION_CHECK(5, 9, 0))
+#include <QDebug>
+#define qmlWarning(object) qWarning()
+#define qmlInfo(object) qInfo()
+#endif
+
 namespace qqsfpm {
 
 /*!

@@ -3,6 +3,7 @@
 
 #include "singlerole.h"
 #include "filters/filtercontainer.h"
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 namespace qqsfpm {
 

@@ -21,6 +21,7 @@
 #include <QtNetwork/QNetworkAccessManager>
 
 #include <memory>
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 namespace QMatrixClient
 {
@@ -31,9 +32,11 @@ namespace QMatrixClient
             NetworkAccessManager(QObject* parent = nullptr);
             ~NetworkAccessManager() override;
 
+#ifndef QT_NO_SSL
             QList<QSslError> ignoredSslErrors() const;
             void addIgnoredSslError(const QSslError& error);
             void clearIgnoredSslErrors();
+#endif
 
             /** Get a pointer to the singleton */
             static NetworkAccessManager* instance();

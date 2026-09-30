@@ -19,6 +19,9 @@ SpectralRoom::SpectralRoom(Connection* connection, QString roomId,
     : Room(connection, std::move(roomId), joinState) {
   connect(this, &Room::avatarChanged, this,
           &SpectralRoom::inheritedAvatarChanged);
+  // Forward base-class typing notifications to our own signal so the
+  // hasUsersTyping/usersTyping Q_PROPERTY bindings update.
+  connect(this, &Room::typingChanged, this, &SpectralRoom::typingChanged);
   connect(this, &SpectralRoom::notificationCountChanged, this,
           &SpectralRoom::countChanged);
   connect(this, &SpectralRoom::highlightCountChanged, this,

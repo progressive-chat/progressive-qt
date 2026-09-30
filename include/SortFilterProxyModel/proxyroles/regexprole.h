@@ -3,6 +3,7 @@
 
 #include "proxyrole.h"
 #include <QRegularExpression>
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 namespace qqsfpm {
 

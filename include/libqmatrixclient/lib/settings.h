@@ -21,6 +21,7 @@
 #include <QtCore/QSettings>
 #include <QtCore/QVector>
 #include <QtCore/QUrl>
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 class QVariant;
 

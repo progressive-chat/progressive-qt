@@ -3,6 +3,7 @@
 
 #include "filter.h"
 #include <QQmlScriptString>
+#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 class QQmlExpression;
 
