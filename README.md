@@ -30,11 +30,20 @@ is runnable on **Android 4.0 and older, down to 2.3**:
 |                | Upstream (Spectral 464) | Progressive Chat Qt      |
 |----------------|-------------------------|--------------------------|
 | Qt             | 5.10+                   | **5.6** (5.6.3 recommended) |
-| QML imports    | QtQuick 2.9, Controls 2.2, Layouts 1.3 | QtQuick 2.6, Controls 2.0, Layouts 1.2 |
-| `labs.platform` / `labs.settings` (Qt ≥ 5.8 only) | used directly | isolated / replaced (tray via lazy `Loader`, settings via LocalStorage, cache dir via C++ `QStandardPaths`) |
+| QML imports    | QtQuick 2.9, Controls 2.2, Layouts 1.3 | QtQuick 2.6, Controls 1.4, Layouts 1.2 |
+| `labs.platform` (Qt ≥ 5.8 only) | used directly (tray icon, StandardPaths) | isolated: tray via lazy `Loader` (`Progressive.Compat.TrayIcon`), cache dir via C++ `QStandardPaths` |
 | C++            | C++14, Qt-5.10-only `invokeMethod` path | keeps the Qt &lt; 5.10 fallback (`src/imageprovider.cpp`), C++14 with C++11 fallback note in `progressive-qt.pro` |
 | Android        | —                       | `android/AndroidManifest.xml`: minSdk 9 (2.3) → target 14 (4.0) |
 | Branding       | Spectral / ENCOM        | **Progressive Chat**, `chat.progressive.qt`, https://progressive.chat contributors |
+
+## Fork-only changes
+
+Changes that exist only in this fork (not in upstream Spectral/NeoChat):
+
+- **Back button in Settings** (`imports/Progressive/Page/SettingForm.ui.qml`):
+  upstream has no way back from the Settings page except tapping an
+  account avatar — with zero accounts configured that is a dead end.
+  The fork adds an explicit Back row returning to the room view.
 
 Details and remaining work (Controls 2 backport on stock Qt 5.6, NDK notes):
 [`COMPAT/Qt56.md`](COMPAT/Qt56.md).

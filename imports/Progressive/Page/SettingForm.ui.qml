@@ -164,6 +164,9 @@ Item {
 
                 id: backButton
 
+                // FORK-ONLY: upstream Spectral/NeoChat has no way back from
+                // Settings (dead end with zero accounts). See README
+                // "Fork-only changes".
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 16
