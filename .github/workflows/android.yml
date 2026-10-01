@@ -1,0 +1,102 @@
+name: Android APK (Qt 5.6)
+# Builds Progressive Chat Qt for Android with the era toolchain:
+# Qt 5.6.3 + NDK r10e + SDK android-14, ant + JDK 8.
+# A local APK build is intentionally NOT supported on aarch64 dev boxes
+# (NDK r10e host tools are x86_64-only); CI is the real Android toolchain.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-22.04
+    env:
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROID_NDK_ROOT: ${{ github.workspace }}/android-ndk-r10e
+      QT56_PREFIX: ${{ github.workspace }}/qt56-install
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ant make perl python3 \
+            libgl1-mesa-dev libfontconfig1-dev libfreetype6-dev \
+            libdbus-1-dev libglib2.0-dev unzip curl
+
+      - name: Set up JDK 11 (SDK manager) and JDK 8 (ant build)
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 11
+
+      - name: Install Android SDK packages
+        run: |
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          curl -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdtools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platform-tools" "platforms;android-14" "build-tools;24.0.3"
+
+      - name: Install NDK r10e
+        run: |
+          curl -o ndk.zip https://dl.google.com/android/repository/android-ndk-r10e-linux-x86_64.zip
+          unzip -q ndk.zip -d "${{ github.workspace }}"
+          "$ANDROID_NDK_ROOT/ndk-build" --version || true
+
+      - name: Fetch Qt 5.6.3 sources
+        run: |
+          curl -o qt-5.6.3.tar.xz https://download.qt.io/archive/qt/5.6/5.6.3/single/qt-everywhere-opensource-src-5.6.3.tar.xz
+          tar -xf qt-5.6.3.tar.xz
+
+      - name: Build Qt 5.6.3 for Android (armeabi-v7a, API 14)
+        run: |
+          cd qt-everywhere-opensource-src-5.6.3
+          ./configure -prefix "$QT56_PREFIX" \
+            -release -opensource -confirm-license \
+            -xplatform android-g++ \
+            -android-sdk "$ANDROID_SDK_ROOT" \
+            -android-ndk "$ANDROID_NDK_ROOT" \
+            -android-ndk-host linux-x86_64 \
+            -c++std c++11 -no-openssl -no-icu \
+            -nomake examples -nomake tests \
+            -skip qt3d -skip qtactiveqt -skip qtcanvas3d \
+            -skip qtconnectivity -skip qtdoc -skip qtenginio -skip qtimageformats \
+            -skip qtlocation -skip qtmacextras -skip qtmultimedia \
+            -skip qtscript -skip qtsensors -skip qtserialport -skip qtsvg \
+            -skip qtquickcontrols2 -skip qttools -skip qtwayland -skip qtwebchannel \
+            -skip qtwebengine -skip qtwebview -skip qtwebsockets \
+            -skip qtwinextras -skip qtx11extras -skip qtxmlpatterns
+          make -j"$(nproc)"
+          make install
+          "$QT56_PREFIX/bin/qmake" -query QT_VERSION
+
+      - name: Set up JDK 8 for the ant build
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 8
+
+      - name: Build app + APK
+        run: |
+          export JAVA_HOME="$JAVA_HOME_8_X64"
+          export PATH="$QT56_PREFIX/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          mkdir -p app-build && cd app-build
+          "$QT56_PREFIX/bin/qmake" "$GITHUB_WORKSPACE/progressive-qt.pro"
+          make -j"$(nproc)"
+          make install INSTALL_ROOT=android-build
+          "$QT56_PREFIX/bin/androiddeployqt" \
+            --input android-libprogressive-chat.so-deployment-settings.json \
+            --output android-build --deployment bundled --ant /usr/bin/ant
+          find android-build -name "*.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: progressive-chat-qt-apk
+          path: app-build/android-build/bin/*.apk
