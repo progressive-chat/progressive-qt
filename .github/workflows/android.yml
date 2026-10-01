@@ -41,7 +41,7 @@ jobs:
           mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platform-tools" "platforms;android-14" "platforms;android-16" "build-tools;24.0.3"
+          sdkmanager "platform-tools" "platforms;android-10" "platforms;android-14" "platforms;android-16" "build-tools;24.0.3"
 
       - name: Set up JDK 8 (Qt + ant builds)
         uses: actions/setup-java@v4
