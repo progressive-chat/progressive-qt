@@ -33,13 +33,17 @@ using namespace QMatrixClient;
 
 #ifdef Q_OS_ANDROID
 namespace {
-// On-device startup log: /sdcard/progressive-chat.log (readable with any
-// file manager, no adb needed). Captures Qt/QML warnings plus explicit
+// On-device startup log: tries external files dir first (accessible without
+// root on Android 5+), falls back to app's cache dir. Readable with any
+// file manager, no adb needed. Captures Qt/QML warnings plus explicit
 // stage markers so a silent native crash still leaves a trace.
 QString progressiveLogPath() {
-  const QString path =
-      QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
-      QStringLiteral("/progressive-chat.log");
+  // Try external files dir first (accessible without root on Android 5+)
+  QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+  if (path.isEmpty()) {
+    path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+  }
+  path += QStringLiteral("/progressive-chat.log");
   return path;
 }
 void progressiveLogRaw(const QString& line) {
@@ -64,6 +68,11 @@ void progressiveMessageHandler(QtMsgType, const QMessageLogContext&,
 int main(int argc, char *argv[]) {
 #if defined(Q_OS_WIN)
   QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
+
+#ifdef Q_OS_ANDROID
+  // Earliest possible stage marker - before QApplication
+  PROGRESSIVE_STAGE("pre-QApplication");
 #endif
 
   QApplication app(argc, argv);
