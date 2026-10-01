@@ -32,6 +32,20 @@ android {
     QT += androidextras
     # androiddeployqt (Qt 5.6) packages everything under android/.
     ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android
+    # Explicit QML modules to bundle: the qmlimportscanner pass cannot see
+    # our qrc-embedded sources reliably, so list every QtQuick module the
+    # QML uses (paths are relative to the Qt install, see androiddeployqt
+    # "deployment-dependencies"). Our own Progressive.* modules live in
+    # res.qrc and need no bundling; SortFilterProxyModel is C++-registered.
+    ANDROID_DEPLOYMENT_DEPENDENCIES = \
+        qml/QtQuick.2 \
+        qml/QtQml \
+        qml/QtQuick/Controls \
+        qml/QtQuick/Layouts \
+        qml/QtQuick/Window.2 \
+        qml/QtQml/Models.2 \
+        qml/QtGraphicalEffects \
+        qml/Qt/labs/settings
 }
 
 # Qt 5.6 + GCC 4.9 (desktop) / NDK r10e (Android) understand C++14 well
@@ -69,7 +83,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 RESOURCES += \
     res.qrc
 
-QML_IMPORT_PATH += imports/
+QML_IMPORT_PATH += $$PWD/imports/
 QML_DESIGNER_IMPORT_PATH += imports/
 
 unix:!mac:!android:isEmpty(PREFIX) {
