@@ -37,7 +37,9 @@ android {
     # QML uses (paths are relative to the Qt install, see androiddeployqt
     # "deployment-dependencies"). Our own Progressive.* modules live in
     # res.qrc and need no bundling; SortFilterProxyModel is C++-registered.
-    ANDROID_DEPLOYMENT_DEPENDENCIES = \
+    # Adding the platform plugin here ensures it's bundled (fixes 'no platform
+    # plugin' error). Other Qt libraries are still auto-detected by the scanner.
+    ANDROID_DEPLOYMENT_DEPENDENCIES += \
         qml/QtQuick.2 \
         qml/QtQml \
         qml/QtQuick/Controls \
