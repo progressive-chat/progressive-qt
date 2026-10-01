@@ -11,7 +11,7 @@ cd "$SRC_DIR"
 ./configure -prefix "$PREFIX" \
   -release -opensource -confirm-license \
   -c++std c++11 \
-  -no-openssl -no-icu \
+  -no-openssl -no-icu -no-sql-mysql \
   -no-xcb -no-eglfs -no-directfb -no-kms \
   -nomake examples -nomake tests \
   -skip qt3d -skip qtactiveqt -skip qtandroidextras -skip qtcanvas3d \
