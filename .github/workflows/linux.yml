@@ -1,0 +1,73 @@
+name: Linux PC Qt 5.6 (arm64)
+# Desktop Linux build with the real Qt 5.6.3 toolchain (host фактически).
+# Proves the Qt 5.6 desktop target (first difference vs upstream) on every push.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    env:
+      QT56_PREFIX: /tmp/qt56-install
+      QT56_SRC: /tmp/qt56src/qt-everywhere-opensource-src-5.6.3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make perl python3 \
+            libgl1-mesa-dev libfontconfig1-dev libfreetype6-dev \
+            libdbus-1-dev libglib2.0-dev unzip curl
+
+      - name: Fetch Qt 5.6.3 sources
+        run: |
+          mkdir -p /tmp/qt56src && cd /tmp/qt56src
+          curl -o qt-5.6.3.tar.xz https://download.qt.io/archive/qt/5.6/5.6.3/single/qt-everywhere-opensource-src-5.6.3.tar.xz
+          tar -xf qt-5.6.3.tar.xz
+          # `requires` is a C++20 keyword (new compilers); rename it.
+          sed -i 's/const QString requires =/const QString pkgconfigRequires =/; s/if (!requires\.isEmpty())/if (!pkgconfigRequires.isEmpty())/; s/<< requires <</<< pkgconfigRequires <</' \
+            "$QT56_SRC/qtbase/qmake/generators/makefile.cpp"
+
+      - name: Build Qt 5.6.3 (host)
+        run: |
+          cd "$QT56_SRC"
+          ./configure -prefix "$QT56_PREFIX" \
+            -release -opensource -confirm-license \
+            -c++std c++11 -no-openssl -no-icu \
+            -no-xcb -no-eglfs -no-directfb -no-kms \
+            -nomake examples -nomake tests \
+            -skip qt3d -skip qtactiveqt -skip qtandroidextras -skip qtcanvas3d \
+            -skip qtconnectivity -skip qtdoc -skip qtenginio -skip qtimageformats \
+            -skip qtlocation -skip qtmacextras -skip qtmultimedia \
+            -skip qtscript -skip qtsensors -skip qtserialport -skip qtsvg \
+            -skip qtquickcontrols2 -skip qttools -skip qtwayland -skip qtwebchannel \
+            -skip qtwebengine -skip qtwebview -skip qtwebsockets \
+            -skip qtwinextras -skip qtx11extras -skip qtxmlpatterns
+          make -j"$(nproc)"
+          make install
+          "$QT56_PREFIX/bin/qmake" -query QT_VERSION
+
+      - name: Build app
+        run: |
+          export PATH="$QT56_PREFIX/bin:$PATH"
+          mkdir -p desktop-build && cd desktop-build
+          qmake "$GITHUB_WORKSPACE/progressive-qt.pro"
+          make -j"$(nproc)"
+          ls -la progressive-chat
+
+      - name: Smoke test (offscreen, must stay resident)
+        run: |
+          cd desktop-build
+          export QT_QPA_PLATFORM=offscreen
+          timeout 20 ./progressive-chat || test $? -eq 124
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: progressive-chat-qt-linux-arm64
+          path: desktop-build/progressive-chat
