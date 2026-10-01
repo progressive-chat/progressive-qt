@@ -29,7 +29,9 @@
 
 #if __cplusplus >= 201703L
 #define FALLTHROUGH [[fallthrough]]
-#elif __has_cpp_attribute(clang::fallthrough)
+// NOTE (Progressive Chat Qt): __has_cpp_attribute is Clang-only on old
+// toolchains (e.g. GCC 4.9 in NDK r10e); guard it so they take the fallback.
+#elif defined(__clang__) && __has_cpp_attribute(clang::fallthrough)
 #define FALLTHROUGH [[clang::fallthrough]]
 #else
 #define FALLTHROUGH // -fallthrough
