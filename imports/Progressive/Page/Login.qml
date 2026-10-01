@@ -11,7 +11,8 @@ LoginForm {
 
     function doLogin() {
         loginError.visible = false
-        if (!(serverField.text.startsWith("http") && serverField.text.includes("://"))) {
+        // NOTE: Qt 5.6 V4 has no String.startsWith/includes — use indexOf.
+        if (!(serverField.text.indexOf("http") === 0 && serverField.text.indexOf("://") !== -1)) {
             loginError.text = "Server address should start with http(s)://"
             loginError.visible = true
             return
