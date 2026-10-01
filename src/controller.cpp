@@ -69,11 +69,11 @@ void Controller::loginWithCredentials(QString serverAddr, QString user,
       addConnection(m_connection);
     });
     connect(m_connection, &Connection::networkError,
-            [=](QString error, QByteArray detail) {
-              emit errorOccured("Network", error);
+            [=](QString error, QString, int, int) {
+              emit errorOccured("Network Error", error);
             });
     connect(m_connection, &Connection::loginError,
-            [=](QString error, QByteArray detail) {
+            [=](QString error, QString) {
               emit errorOccured("Login Failed", error);
             });
   }
@@ -140,12 +140,12 @@ void Controller::invokeLogin() {
         addConnection(c);
       });
       connect(c, &Connection::loginError,
-              [=](QString error, QByteArray detail) {
+              [=](QString error, QString) {
                 emit errorOccured("Login Failed", error);
               });
       connect(c, &Connection::networkError,
-              [=](QString error, QByteArray detail) {
-                emit errorOccured("Network", error);
+              [=](QString error, QString, int, int) {
+                emit errorOccured("Network Error", error);
               });
       c->connectWithToken(account.userId(), accessToken, account.deviceId());
     }

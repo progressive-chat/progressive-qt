@@ -167,7 +167,12 @@ QDateTime SpectralRoom::lastActiveTime() {
   return messageEvents().rbegin()->get()->timestamp();
 }
 
-float SpectralRoom::orderForTag(QString name) { return tag(name).order; }
+float SpectralRoom::orderForTag(QString name) {
+  // NOTE (Progressive Chat Qt): TagRecord::order became Omittable<float>
+  // in the Dec 2018 lib; omitted order sorts as 0.
+  const auto order = tag(name).order;
+  return order.omitted() ? 0.0f : order.value();
+}
 
 int SpectralRoom::savedTopVisibleIndex() const {
   return firstDisplayedMarker() == timelineEdge()

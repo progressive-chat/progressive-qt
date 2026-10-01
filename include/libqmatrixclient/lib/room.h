@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "jobs/syncjob.h"
+#include "csapi/message_pagination.h"
 #include "events/roommessageevent.h"
 #include "events/accountdataevents.h"
 #include "eventitem.h"
@@ -29,11 +29,11 @@
 #include <memory>
 #include <deque>
 #include <utility>
-#include <QObject>  // NOTE (Progressive Chat Qt): direct include required by Qt 5.6 moc
 
 namespace QMatrixClient
 {
     class Event;
+    class SyncRoomData;
     class RoomMemberEvent;
     class Connection;
     class User;
@@ -84,6 +84,9 @@ namespace QMatrixClient
             Q_PROPERTY(int timelineSize READ timelineSize NOTIFY addedMessages)
             Q_PROPERTY(QStringList memberNames READ memberNames NOTIFY memberListChanged)
             Q_PROPERTY(int memberCount READ memberCount NOTIFY memberListChanged)
+            Q_PROPERTY(int joinedCount READ joinedCount NOTIFY memberListChanged)
+            Q_PROPERTY(int invitedCount READ invitedCount NOTIFY memberListChanged)
+            Q_PROPERTY(int totalMemberCount READ totalMemberCount NOTIFY memberListChanged)
 
             Q_PROPERTY(bool displayed READ displayed WRITE setDisplayed NOTIFY displayedChanged)
             Q_PROPERTY(QString firstDisplayedEventId READ firstDisplayedEventId WRITE setFirstDisplayedEventId NOTIFY firstDisplayedEventChanged)
@@ -96,11 +99,33 @@ namespace QMatrixClient
             Q_PROPERTY(bool isFavourite READ isFavourite NOTIFY tagsChanged)
             Q_PROPERTY(bool isLowPriority READ isLowPriority NOTIFY tagsChanged)
 
+            Q_PROPERTY(GetRoomEventsJob* eventsHistoryJob READ eventsHistoryJob NOTIFY eventsHistoryJobChanged)
+
         public:
             using Timeline = std::deque<TimelineItem>;
             using PendingEvents = std::vector<PendingEventItem>;
             using rev_iter_t = Timeline::const_reverse_iterator;
             using timeline_iter_t = Timeline::const_iterator;
+
+            enum Change : uint {
+                NoChange = 0x0,
+                NameChange = 0x1,
+                CanonicalAliasChange = 0x2,
+                TopicChange = 0x4,
+                UnreadNotifsChange = 0x8,
+                AvatarChange = 0x10,
+                JoinStateChange = 0x20,
+                TagsChange = 0x40,
+                MembersChange = 0x80,
+                EncryptionOn = 0x100,
+                AccountDataChange = 0x200,
+                SummaryChange = 0x400,
+                ReadMarkerChange = 0x800,
+                OtherChange = 0x8000,
+                AnyChange = 0xFFFF
+            };
+            Q_DECLARE_FLAGS(Changes, Change)
+            Q_FLAG(Changes)
 
             Room(Connection* connection, QString id, JoinState initialJoinState);
             ~Room() override;
@@ -123,9 +148,15 @@ namespace QMatrixClient
 
             Q_INVOKABLE QList<User*> users() const;
             QStringList memberNames() const;
+            [[deprecated("Use joinedCount(), invitedCount(), totalMemberCount()")]]
             int memberCount() const;
             int timelineSize() const;
             bool usesEncryption() const;
+            int joinedCount() const;
+            int invitedCount() const;
+            int totalMemberCount() const;
+
+            GetRoomEventsJob* eventsHistoryJob() const;
 
             /**
              * Returns a square room avatar with the given size and requests it
@@ -178,9 +209,16 @@ namespace QMatrixClient
             const Timeline& messageEvents() const;
             const PendingEvents& pendingEvents() const;
             /**
-             * A convenience method returning the read marker to
-             * the before-oldest message
+             * A convenience method returning the read marker to the position
+             * before the "oldest" event; same as messageEvents().crend()
              */
+            rev_iter_t historyEdge() const;
+            /**
+             * A convenience method returning the iterator beyond the latest
+             * arrived event; same as messageEvents().cend()
+             */
+            Timeline::const_iterator syncEdge() const;
+            /// \deprecated Use historyEdge instead
             rev_iter_t timelineEdge() const;
             Q_INVOKABLE TimelineItem::index_t minTimelineIndex() const;
             Q_INVOKABLE TimelineItem::index_t maxTimelineIndex() const;
@@ -190,6 +228,13 @@ namespace QMatrixClient
             rev_iter_t findInTimeline(const QString& evtId) const;
 
             bool displayed() const;
+            /// Mark the room as currently displayed to the user
+            /**
+             * Marking the room displayed causes the room to obtain the full
+             * list of members if it's been lazy-loaded before; in the future
+             * it may do more things bound to "screen time" of the room, e.g.
+             * measure that "screen time".
+             */
             void setDisplayed(bool displayed = true);
             QString firstDisplayedEventId() const;
             rev_iter_t firstDisplayedMarker() const;
@@ -324,6 +369,7 @@ namespace QMatrixClient
              *
              * Takes ownership of the event, deleting it once the matching one
              * arrives with the sync
+             * \return transaction id associated with the event.
              */
             QString postEvent(RoomEvent* event);
             QString postJson(const QString& matrixType,
@@ -357,6 +403,7 @@ namespace QMatrixClient
             void markAllMessagesAsRead();
 
         signals:
+            void eventsHistoryJobChanged();
             void aboutToAddHistoricalMessages(RoomEventsRange events);
             void aboutToAddNewMessages(RoomEventsRange events);
             void addedMessages(int fromIndex, int toIndex);
@@ -369,6 +416,13 @@ namespace QMatrixClient
             void pendingEventDiscarded();
             void pendingEventChanged(int pendingEventIndex);
 
+            /** A common signal for various kinds of changes in the room
+             * Aside from all changes in the room state
+             * @param changes a set of flags describing what changes occured
+             *                upon the last sync
+             * \sa StateChange
+             */
+            void changed(Changes changes);
             /**
              * \brief The room name, the canonical alias or other aliases changed
              *
@@ -383,7 +437,17 @@ namespace QMatrixClient
             void userRemoved(User* user);
             void memberAboutToRename(User* user, QString newName);
             void memberRenamed(User* user);
+            /// The list of members has changed
+            /** Emitted no more than once per sync, this is a good signal to
+             * for cases when some action should be done upon any change in
+             * the member list. If you need per-item granularity you should use
+             * userAdded, userRemoved and memberAboutToRename / memberRenamed
+             * instead.
+             */
             void memberListChanged();
+            /// The previously lazy-loaded members list is now loaded entirely
+            /// \sa setDisplayed
+            void allMembersLoaded();
             void encryption();
 
             void joinStateChanged(JoinState oldState, JoinState newState);
@@ -418,27 +482,28 @@ namespace QMatrixClient
             /// The room is about to be deleted
             void beforeDestruction(Room*);
 
-        public: // Used by Connection - not a part of the client API
-            QJsonObject toJson() const;
-            void updateData(SyncRoomData&& data );
-
-            // Clients should use Connection::joinRoom() and Room::leaveRoom()
-            // to change the room state
-            void setJoinState( JoinState state );
-
         protected:
             /// Returns true if any of room names/aliases has changed
-            virtual bool processStateEvent(const RoomEvent& e);
-            virtual void processEphemeralEvent(EventPtr&& event);
-            virtual void processAccountDataEvent(EventPtr&& event);
+            virtual Changes processStateEvent(const RoomEvent& e);
+            virtual Changes processEphemeralEvent(EventPtr&& event);
+            virtual Changes processAccountDataEvent(EventPtr&& event);
             virtual void onAddNewTimelineEvents(timeline_iter_t /*from*/) { }
             virtual void onAddHistoricalTimelineEvents(rev_iter_t /*from*/) { }
             virtual void onRedaction(const RoomEvent& /*prevEvent*/,
                                      const RoomEvent& /*after*/) { }
+            virtual QJsonObject toJson() const;
+            virtual void updateData(SyncRoomData&& data, bool fromCache = false);
 
         private:
+            friend class Connection;
+
             class Private;
             Private* d;
+
+            // This is called from Connection, reflecting a state change that
+            // arrived from the server. Clients should use
+            // Connection::joinRoom() and Room::leaveRoom() to change the state.
+            void setJoinState(JoinState state);
     };
 
     class MemberSorter
@@ -461,3 +526,4 @@ namespace QMatrixClient
     };
 }  // namespace QMatrixClient
 Q_DECLARE_METATYPE(QMatrixClient::FileTransferInfo)
+Q_DECLARE_OPERATORS_FOR_FLAGS(QMatrixClient::Room::Changes)

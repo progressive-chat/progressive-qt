@@ -80,19 +80,6 @@ namespace QMatrixClient
              */
             static QUrl makeRequestUrl(QUrl baseUrl, const QString& roomId, const QString& eventType, const QString& stateKey);
 
-            ~GetRoomStateWithKeyJob() override;
-
-            // Result properties
-
-            /// The content of the state event.
-            StateEventPtr&& data();
-
-        protected:
-            Status parseJson(const QJsonDocument& data) override;
-
-        private:
-            class Private;
-            QScopedPointer<Private> d;
     };
 
     /// Get the state identified by the type, with the empty state key.
@@ -122,19 +109,6 @@ namespace QMatrixClient
              */
             static QUrl makeRequestUrl(QUrl baseUrl, const QString& roomId, const QString& eventType);
 
-            ~GetRoomStateByTypeJob() override;
-
-            // Result properties
-
-            /// The content of the state event.
-            StateEventPtr&& data();
-
-        protected:
-            Status parseJson(const QJsonDocument& data) override;
-
-        private:
-            class Private;
-            QScopedPointer<Private> d;
     };
 
     /// Get all state events in the current state of a room.
@@ -184,8 +158,17 @@ namespace QMatrixClient
             /*! Get the m.room.member events for the room.
              * \param roomId
              *   The room to get the member events for.
+             * \param at
+             *   The token defining the timeline position as-of which to return
+             *   the list of members. This token can be obtained from a batch token
+             *   returned for each room by the sync API, or from
+             *   a ``start``/``end`` token returned by a ``/messages`` request.
+             * \param membership
+             *   Only return users with the specified membership
+             * \param notMembership
+             *   Only return users with membership state other than specified
              */
-            explicit GetMembersByRoomJob(const QString& roomId);
+            explicit GetMembersByRoomJob(const QString& roomId, const QString& at = {}, const QString& membership = {}, const QString& notMembership = {});
 
             /*! Construct a URL without creating a full-fledged job object
              *
@@ -193,7 +176,7 @@ namespace QMatrixClient
              * GetMembersByRoomJob is necessary but the job
              * itself isn't.
              */
-            static QUrl makeRequestUrl(QUrl baseUrl, const QString& roomId);
+            static QUrl makeRequestUrl(QUrl baseUrl, const QString& roomId, const QString& at = {}, const QString& membership = {}, const QString& notMembership = {});
 
             ~GetMembersByRoomJob() override;
 

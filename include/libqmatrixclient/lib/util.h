@@ -29,14 +29,10 @@
 
 #if __cplusplus >= 201703L
 #define FALLTHROUGH [[fallthrough]]
-// NOTE (Progressive Chat Qt): __has_cpp_attribute is Clang-only on old
-// toolchains (e.g. GCC 4.9 in NDK r10e); nested so GCC never parses it.
-#elif defined(__clang__)
-#if __has_cpp_attribute(clang::fallthrough)
+#elif __has_cpp_attribute(clang::fallthrough)
 #define FALLTHROUGH [[clang::fallthrough]]
-#else
-#define FALLTHROUGH // -fallthrough
-#endif
+#elif __has_cpp_attribute(gnu::fallthrough)
+#define FALLTHROUGH [[gnu::fallthrough]]
 #else
 #define FALLTHROUGH // -fallthrough
 #endif
@@ -92,17 +88,19 @@ namespace QMatrixClient
             static_assert(!std::is_reference<T>::value,
                 "You cannot make an Omittable<> with a reference type");
         public:
+            using value_type = std::decay_t<T>;
+
             explicit Omittable() : Omittable(none) { }
-            Omittable(NoneTag) : _value(std::decay_t<T>()), _omitted(true) { }
-            Omittable(const std::decay_t<T>& val) : _value(val) { }
-            Omittable(std::decay_t<T>&& val) : _value(std::move(val)) { }
-            Omittable<T>& operator=(const std::decay_t<T>& val)
+            Omittable(NoneTag) : _value(value_type()), _omitted(true) { }
+            Omittable(const value_type& val) : _value(val) { }
+            Omittable(value_type&& val) : _value(std::move(val)) { }
+            Omittable<T>& operator=(const value_type& val)
             {
                 _value = val;
                 _omitted = false;
                 return *this;
             }
-            Omittable<T>& operator=(std::decay_t<T>&& val)
+            Omittable<T>& operator=(value_type&& val)
             {
                 _value = std::move(val);
                 _omitted = false;
@@ -110,56 +108,108 @@ namespace QMatrixClient
             }
 
             bool omitted() const { return _omitted; }
-            const std::decay_t<T>& value() const { Q_ASSERT(!_omitted); return _value; }
-            std::decay_t<T>& value() { Q_ASSERT(!_omitted); return _value; }
-            std::decay_t<T>&& release() { _omitted = true; return std::move(_value); }
+            const value_type& value() const
+            {
+                Q_ASSERT(!_omitted);
+                return _value;
+            }
+            value_type& editValue()
+            {
+                _omitted = false;
+                return _value;
+            }
+            /// Merge the value from another Omittable
+            /// \return true if \p other is not omitted and the value of
+            ///         the current Omittable was different (or omitted);
+            ///         in other words, if the current Omittable has changed;
+            ///         false otherwise
+            template <typename T1>
+            auto merge(const Omittable<T1>& other)
+                -> std::enable_if_t<std::is_convertible<T1, T>::value, bool>
+            {
+                if (other.omitted() ||
+                        (!_omitted && _value == other.value()))
+                    return false;
+                _omitted = false;
+                _value = other.value();
+                return true;
+            }
+            value_type&& release() { _omitted = true; return std::move(_value); }
 
-            operator bool() const { return !omitted(); }
-            const std::decay<T>* operator->() const { return &value(); }
-            std::decay_t<T>* operator->() { return &value(); }
-            const std::decay_t<T>& operator*() const { return value(); }
-            std::decay_t<T>& operator*() { return value(); }
+            operator value_type&() & { return editValue(); }
+            const value_type* operator->() const & { return &value(); }
+            value_type* operator->() & { return &editValue(); }
+            const value_type& operator*() const & { return value(); }
+            value_type& operator*() & { return editValue(); }
 
         private:
             T _value;
             bool _omitted = false;
     };
 
+    namespace _impl {
+        template <typename AlwaysVoid, typename> struct fn_traits;
+    }
+
     /** Determine traits of an arbitrary function/lambda/functor
-     * This only works with arity of 1 (1-argument) for now but is extendable
-     * to other cases. Also, doesn't work with generic lambdas and function
-     * objects that have operator() overloaded
+     * Doesn't work with generic lambdas and function objects that have
+     * operator() overloaded.
      * \sa https://stackoverflow.com/questions/7943525/is-it-possible-to-figure-out-the-parameter-type-and-return-type-of-a-lambda#7943765
      */
     template <typename T>
-    struct function_traits : public function_traits<decltype(&T::operator())>
-    { }; // A generic function object that has (non-overloaded) operator()
+    struct function_traits : public _impl::fn_traits<void, T> {};
 
     // Specialisation for a function
-    template <typename ReturnT, typename ArgT>
-    struct function_traits<ReturnT(ArgT)>
+    template <typename ReturnT, typename... ArgTs>
+    struct function_traits<ReturnT(ArgTs...)>
     {
+        static constexpr auto is_callable = true;
         using return_type = ReturnT;
-        using arg_type = ArgT;
+        using arg_types = std::tuple<ArgTs...>;
+        static constexpr auto arg_number = std::tuple_size<arg_types>::value;
     };
 
-    // Specialisation for a member function
-    template <typename ReturnT, typename ClassT, typename ArgT>
-    struct function_traits<ReturnT(ClassT::*)(ArgT)>
-        : function_traits<ReturnT(ArgT)>
-    { };
+    namespace _impl {
+        template <typename AlwaysVoid, typename T>
+        struct fn_traits
+        {
+            static constexpr auto is_callable = false;
+        };
 
-    // Specialisation for a const member function
-    template <typename ReturnT, typename ClassT, typename ArgT>
-    struct function_traits<ReturnT(ClassT::*)(ArgT) const>
-        : function_traits<ReturnT(ArgT)>
-    { };
+        template <typename T>
+        struct fn_traits<decltype(void(&T::operator())), T>
+            : public fn_traits<void, decltype(&T::operator())>
+        { }; // A generic function object that has (non-overloaded) operator()
+
+        // Specialisation for a member function
+        template <typename ReturnT, typename ClassT, typename... ArgTs>
+        struct fn_traits<void, ReturnT(ClassT::*)(ArgTs...)>
+            : function_traits<ReturnT(ArgTs...)>
+        { };
+
+        // Specialisation for a const member function
+        template <typename ReturnT, typename ClassT, typename... ArgTs>
+        struct fn_traits<void, ReturnT(ClassT::*)(ArgTs...) const>
+            : function_traits<ReturnT(ArgTs...)>
+        { };
+    }  // namespace _impl
 
     template <typename FnT>
     using fn_return_t = typename function_traits<FnT>::return_type;
 
-    template <typename FnT>
-    using fn_arg_t = typename function_traits<FnT>::arg_type;
+    template <typename FnT, int ArgN = 0>
+    using fn_arg_t =
+        std::tuple_element_t<ArgN, typename function_traits<FnT>::arg_types>;
+
+    template <typename R, typename FnT>
+    constexpr bool returns()
+    {
+        return std::is_same<fn_return_t<FnT>, R>::value;
+    }
+
+    // Poor-man's is_invokable
+    template <typename T>
+    constexpr auto is_callable_v = function_traits<T>::is_callable;
 
     inline auto operator"" _ls(const char* s, std::size_t size)
     {
@@ -246,5 +296,11 @@ namespace QMatrixClient
      * This includes HTML escaping of <,>,",& and URLs linkification.
      */
     QString prettyPrint(const QString& plainText);
+
+    /** Return a path to cache directory after making sure that it exists
+     * The returned path has a trailing slash, clients don't need to append it.
+     * \param dir path to cache directory relative to the standard cache path
+     */
+    QString cacheLocation(const QString& dirName);
 }  // namespace QMatrixClient
 

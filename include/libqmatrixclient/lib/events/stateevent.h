@@ -30,10 +30,20 @@ namespace QMatrixClient {
             ~StateEventBase() override = default;
 
             bool isStateEvent() const override { return true; }
+            QString replacedState() const;
+            void dumpTo(QDebug dbg) const override;
+
             virtual bool repeatsState() const;
     };
     using StateEventPtr = event_ptr_tt<StateEventBase>;
     using StateEvents = EventsArray<StateEventBase>;
+
+    /**
+     * A combination of event type and state key uniquely identifies a piece
+     * of state in Matrix.
+     * \sa https://matrix.org/docs/spec/client_server/unstable.html#types-of-room-events
+     */
+    using StateEventKey = std::pair<QString, QString>;
 
     template <typename ContentT>
     struct Prev
@@ -85,8 +95,27 @@ namespace QMatrixClient {
             QString prevSenderId() const
                 { return _prev ? _prev->senderId : QString(); }
 
-        protected:
+        private:
             ContentT _content;
             std::unique_ptr<Prev<ContentT>> _prev;
     };
 } // namespace QMatrixClient
+
+// NOTE (Progressive Chat Qt): Qt 5.6 has no qHash(std::pair), but
+// QHash<StateEventKey> (see room.cpp) needs one. StateEventKey is a
+// std::pair alias, so only the global namespace (associated via QString)
+// is visible to ADL at the QHash instantiation point.
+inline uint qHash(const QMatrixClient::StateEventKey& k, uint seed = 0)
+{ return qHash(k.first, seed) ^ qHash(k.second, seed); }
+
+namespace std {
+    template <> struct hash<QMatrixClient::StateEventKey>
+    {
+        size_t operator()(const QMatrixClient::StateEventKey& k) const Q_DECL_NOEXCEPT
+        {
+            // NOTE (Progressive Chat Qt): Qt 5.6 has no qHash(std::pair);
+            // combine the members (same distribution for our purposes).
+            return qHash(k.first) ^ qHash(k.second);
+        }
+    };
+}

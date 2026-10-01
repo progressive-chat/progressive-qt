@@ -20,61 +20,18 @@
 
 #include "basejob.h"
 
-#include "joinstate.h"
-#include "events/stateevent.h"
-#include "util.h"
+#include "../syncdata.h"
+#include "../csapi/definitions/sync_filter.h"
 
 namespace QMatrixClient
 {
-    class SyncRoomData
-    {
-        public:
-            QString roomId;
-            JoinState joinState;
-            StateEvents state;
-            RoomEvents timeline;
-            Events ephemeral;
-            Events accountData;
-
-            bool timelineLimited;
-            QString timelinePrevBatch;
-            int unreadCount;
-            int highlightCount;
-            int notificationCount;
-
-            SyncRoomData(const QString& roomId, JoinState joinState_,
-                         const QJsonObject& room_);
-            SyncRoomData(SyncRoomData&&) = default;
-            SyncRoomData& operator=(SyncRoomData&&) = default;
-
-            static const QString UnreadCountKey;
-    };
-    // QVector cannot work with non-copiable objects, std::vector can.
-    using SyncDataList = std::vector<SyncRoomData>;
-
-    class SyncData
-    {
-        public:
-            BaseJob::Status parseJson(const QJsonDocument &data);
-            Events&& takePresenceData();
-            Events&& takeAccountData();
-            Events&& takeToDeviceEvents();
-            SyncDataList&& takeRoomData();
-            QString nextBatch() const;
-
-        private:
-            QString nextBatch_;
-            Events presenceData;
-            Events accountData;
-            Events toDeviceEvents;
-            SyncDataList roomData;
-    };
-
     class SyncJob: public BaseJob
     {
         public:
             explicit SyncJob(const QString& since = {},
                              const QString& filter = {},
+                             int timeout = -1, const QString& presence = {});
+            explicit SyncJob(const QString& since, const Filter& filter,
                              int timeout = -1, const QString& presence = {});
 
             SyncData &&takeData() { return std::move(d); }

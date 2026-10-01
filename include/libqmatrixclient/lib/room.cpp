@@ -25,9 +25,9 @@
 #include "csapi/receipts.h"
 #include "csapi/redaction.h"
 #include "csapi/account-data.h"
-#include "csapi/message_pagination.h"
 #include "csapi/room_state.h"
 #include "csapi/room_send.h"
+#include "csapi/rooms.h"
 #include "csapi/tags.h"
 #include "events/simplestateevents.h"
 #include "events/roomavatarevent.h"
@@ -46,10 +46,10 @@
 #include "connection.h"
 #include "user.h"
 #include "converters.h"
+#include "syncdata.h"
 
 #include <QtCore/QHash>
 #include <QtCore/QStringBuilder> // for efficient string concats (operator%)
-#include <QtCore/QElapsedTimer>
 #include <QtCore/QPointer>
 #include <QtCore/QDir>
 #include <QtCore/QTemporaryFile>
@@ -92,18 +92,20 @@ class Room::Private
         void updateDisplayname();
 
         Connection* connection;
+        QString id;
+        JoinState joinState;
+        RoomSummary summary;
+        /// The state of the room at timeline position before-0
+        /// \sa timelineBase
+        std::unordered_map<StateEventKey, StateEventPtr> baseState;
+        /// The state of the room at timeline position after-maxTimelineIndex()
+        /// \sa Room::syncEdge
+        QHash<StateEventKey, const StateEventBase*> currentState;
         Timeline timeline;
         PendingEvents unsyncedEvents;
         QHash<QString, TimelineItem::index_t> eventsIndex;
-        QString id;
-        QStringList aliases;
-        QString canonicalAlias;
-        QString name;
         QString displayname;
-        QString topic;
-        QString encryptionAlgorithm;
         Avatar avatar;
-        JoinState joinState;
         int highlightCount = 0;
         int notificationCount = 0;
         members_map_t membersMap;
@@ -120,6 +122,7 @@ class Room::Private
         std::unordered_map<QString, EventPtr> accountData;
         QString prevBatch;
         QPointer<GetRoomEventsJob> eventsHistoryJob;
+        QPointer<GetMembersByRoomJob> allMembersJob;
 
         struct FileTransferPrivateInfo
         {
@@ -157,19 +160,35 @@ class Room::Private
             fileTransfers[tid].status = FileTransferInfo::Failed;
             emit q->fileTransferFailed(tid, errorMessage);
         }
-        // A map from event/txn ids to information about the long operation;
-        // used for both download and upload operations
+        /// A map from event/txn ids to information about the long operation;
+        /// used for both download and upload operations
         QHash<QString, FileTransferPrivateInfo> fileTransfers;
 
         const RoomMessageEvent* getEventWithFile(const QString& eventId) const;
         QString fileNameToDownload(const RoomMessageEvent* event) const;
+
+        Changes setSummary(RoomSummary&& newSummary);
 
         //void inviteUser(User* u); // We might get it at some point in time.
         void insertMemberIntoMap(User* u);
         void renameMember(User* u, QString oldName);
         void removeMemberFromMap(const QString& username, User* u);
 
+        /// A point in the timeline corresponding to baseState
+        rev_iter_t timelineBase() const { return q->findInTimeline(-1); }
+
         void getPreviousContent(int limit = 10);
+
+        template <typename EventT>
+        const EventT* getCurrentState(QString stateKey = {}) const
+        {
+            static const EventT empty;
+            const auto* evt =
+                currentState.value({EventT::matrixTypeId(), stateKey}, &empty);
+            Q_ASSERT(evt->type() == EventT::typeId() &&
+                     evt->matrixType() == EventT::matrixTypeId());
+            return static_cast<const EventT*>(evt);
+        }
 
         bool isEventNotable(const TimelineItem& ti) const
         {
@@ -178,7 +197,7 @@ class Room::Private
                 is<RoomMessageEvent>(*ti);
         }
 
-        void addNewMessageEvents(RoomEvents&& events);
+        Changes addNewMessageEvents(RoomEvents&& events);
         void addHistoricalMessageEvents(RoomEvents&& events);
 
         /** Move events into the timeline
@@ -198,12 +217,14 @@ class Room::Private
          */
         void dropDuplicateEvents(RoomEvents& events) const;
 
-        void setLastReadEvent(User* u, QString eventId);
+        Changes setLastReadEvent(User* u, QString eventId);
         void updateUnreadCount(rev_iter_t from, rev_iter_t to);
-        void promoteReadMarker(User* u, rev_iter_t newMarker,
-                                          bool force = false);
+        Changes promoteReadMarker(User* u, rev_iter_t newMarker,
+                                  bool force = false);
 
-        void markMessagesAsRead(rev_iter_t upToMarker);
+        Changes markMessagesAsRead(rev_iter_t upToMarker);
+
+        void getAllMembers();
 
         QString sendEvent(RoomEventPtr&& event);
 
@@ -215,6 +236,8 @@ class Room::Private
 
         QString doSendEvent(const RoomEvent* pEvent);
         PendingEvents::iterator findAsPending(const RoomEvent* rawEvtPtr);
+        void onEventSendingFailure(const RoomEvent* pEvent,
+                const QString& txnId, BaseJob* call = nullptr);
 
         template <typename EvT>
         auto requestSetState(const QString& stateKey, const EvT& event)
@@ -244,8 +267,11 @@ class Room::Private
         QJsonObject toJson() const;
 
     private:
+        using users_shortlist_t = std::array<User*, 3>;
+        template<typename ContT>
+        users_shortlist_t buildShortlist(const ContT& users) const;
+        users_shortlist_t buildShortlist(const QStringList& userIds) const;
         QString calculateDisplayname() const;
-        QString roomNameFromMemberNames(const QList<User*>& userlist) const;
 
         bool isLocalUser(const User* u) const
         {
@@ -260,9 +286,6 @@ Room::Room(Connection* connection, QString id, JoinState initialJoinState)
     // See "Accessing the Public Class" section in
     // https://marcmutz.wordpress.com/translated-articles/pimp-my-pimpl-%E2%80%94-reloaded/
     d->q = this;
-    connect(this, &Room::userAdded, this, &Room::memberListChanged);
-    connect(this, &Room::userRemoved, this, &Room::memberListChanged);
-    connect(this, &Room::memberRenamed, this, &Room::memberListChanged);
     qCDebug(MAIN) << "New" << toCString(initialJoinState) << "Room:" << id;
 }
 
@@ -288,17 +311,17 @@ const Room::PendingEvents& Room::pendingEvents() const
 
 QString Room::name() const
 {
-    return d->name;
+    return d->getCurrentState<RoomNameEvent>()->name();
 }
 
 QStringList Room::aliases() const
 {
-    return d->aliases;
+    return d->getCurrentState<RoomAliasesEvent>()->aliases();
 }
 
 QString Room::canonicalAlias() const
 {
-    return d->canonicalAlias;
+    return d->getCurrentState<RoomCanonicalAliasEvent>()->alias();
 }
 
 QString Room::displayName() const
@@ -308,7 +331,7 @@ QString Room::displayName() const
 
 QString Room::topic() const
 {
-    return d->topic;
+    return d->getCurrentState<RoomTopicEvent>()->topic();
 }
 
 QString Room::avatarMediaId() const
@@ -366,14 +389,15 @@ void Room::setJoinState(JoinState state)
     d->joinState = state;
     qCDebug(MAIN) << "Room" << id() << "changed state: "
                   << int(oldState) << "->" << int(state);
+    emit changed(Change::JoinStateChange);
     emit joinStateChanged(oldState, state);
 }
 
-void Room::Private::setLastReadEvent(User* u, QString eventId)
+Room::Changes Room::Private::setLastReadEvent(User* u, QString eventId)
 {
     auto& storedId = lastReadEventIds[u];
     if (storedId == eventId)
-        return;
+        return Change::NoChange;
     eventIdReadUsers.remove(storedId, u);
     eventIdReadUsers.insert(eventId, u);
     swap(storedId, eventId);
@@ -384,7 +408,9 @@ void Room::Private::setLastReadEvent(User* u, QString eventId)
         if (storedId != serverReadMarker)
             connection->callApi<PostReadMarkersJob>(id, storedId);
         emit q->readMarkerMoved(eventId, storedId);
+        return Change::ReadMarkerChange;
     }
+    return Change::NoChange;
 }
 
 void Room::Private::updateUnreadCount(rev_iter_t from, rev_iter_t to)
@@ -408,7 +434,7 @@ void Room::Private::updateUnreadCount(rev_iter_t from, rev_iter_t to)
     QElapsedTimer et; et.start();
     const auto newUnreadMessages = count_if(from, to,
             std::bind(&Room::Private::isEventNotable, this, _1));
-    if (et.nsecsElapsed() > 10000)
+    if (et.nsecsElapsed() > profilerMinNsecs() / 10)
         qCDebug(PROFILER) << "Counting gained unread messages took" << et;
 
     if(newUnreadMessages > 0)
@@ -418,7 +444,7 @@ void Room::Private::updateUnreadCount(rev_iter_t from, rev_iter_t to)
             unreadMessages = 0;
 
         unreadMessages += newUnreadMessages;
-        qCDebug(MAIN) << "Room" << displayname << "has gained"
+        qCDebug(MAIN) << "Room" << q->objectName() << "has gained"
             << newUnreadMessages << "unread message(s),"
             << (q->readMarker() == timeline.crend() ?
                     "in total at least" : "in total")
@@ -427,14 +453,15 @@ void Room::Private::updateUnreadCount(rev_iter_t from, rev_iter_t to)
     }
 }
 
-void Room::Private::promoteReadMarker(User* u, rev_iter_t newMarker, bool force)
+Room::Changes Room::Private::promoteReadMarker(User* u, rev_iter_t newMarker,
+                                               bool force)
 {
     Q_ASSERT_X(u, __FUNCTION__, "User* should not be nullptr");
     Q_ASSERT(newMarker >= timeline.crbegin() && newMarker <= timeline.crend());
 
     const auto prevMarker = q->readMarker(u);
     if (!force && prevMarker <= newMarker) // Remember, we deal with reverse iterators
-        return;
+        return Change::NoChange;
 
     Q_ASSERT(newMarker < timeline.crend());
 
@@ -443,14 +470,14 @@ void Room::Private::promoteReadMarker(User* u, rev_iter_t newMarker, bool force)
     auto eagerMarker = find_if(newMarker.base(), timeline.cend(),
           [=](const TimelineItem& ti) { return ti->senderId() != u->id(); });
 
-    setLastReadEvent(u, (*(eagerMarker - 1))->id());
+    auto changes = setLastReadEvent(u, (*(eagerMarker - 1))->id());
     if (isLocalUser(u))
     {
         const auto oldUnreadCount = unreadMessages;
         QElapsedTimer et; et.start();
         unreadMessages = count_if(eagerMarker, timeline.cend(),
                     std::bind(&Room::Private::isEventNotable, this, _1));
-        if (et.nsecsElapsed() > 10000)
+        if (et.nsecsElapsed() > profilerMinNsecs() / 10)
             qCDebug(PROFILER) << "Recounting unread messages took" << et;
 
         // See https://github.com/QMatrixClient/libqmatrixclient/wiki/unread_count
@@ -467,14 +494,16 @@ void Room::Private::promoteReadMarker(User* u, rev_iter_t newMarker, bool force)
                 qCDebug(MAIN) << "Room" << displayname << "still has"
                               << unreadMessages << "unread message(s)";
             emit q->unreadMessagesChanged(q);
+            changes |= Change::UnreadNotifsChange;
         }
     }
+    return changes;
 }
 
-void Room::Private::markMessagesAsRead(rev_iter_t upToMarker)
+Room::Changes Room::Private::markMessagesAsRead(rev_iter_t upToMarker)
 {
     const auto prevMarker = q->readMarker();
-    promoteReadMarker(q->localUser(), upToMarker);
+    auto changes = promoteReadMarker(q->localUser(), upToMarker);
     if (prevMarker != upToMarker)
         qCDebug(MAIN) << "Marked messages as read until" << *q->readMarker();
 
@@ -490,6 +519,7 @@ void Room::Private::markMessagesAsRead(rev_iter_t upToMarker)
             break;
         }
     }
+    return changes;
 }
 
 void Room::markMessagesAsRead(QString uptoEventId)
@@ -513,9 +543,19 @@ int Room::unreadCount() const
     return d->unreadMessages;
 }
 
-Room::rev_iter_t Room::timelineEdge() const
+Room::rev_iter_t Room::historyEdge() const
 {
     return d->timeline.crend();
+}
+
+Room::Timeline::const_iterator Room::syncEdge() const
+{
+    return d->timeline.cend();
+}
+
+Room::rev_iter_t Room::timelineEdge() const
+{
+    return historyEdge();
 }
 
 TimelineItem::index_t Room::minTimelineIndex() const
@@ -552,6 +592,37 @@ Room::rev_iter_t Room::findInTimeline(const QString& evtId) const
     return timelineEdge();
 }
 
+void Room::Private::getAllMembers()
+{
+    // If already loaded or already loading, there's nothing to do here.
+    if (q->joinedCount() - 1 <= membersMap.size() || isJobRunning(allMembersJob))
+        return;
+
+    allMembersJob = connection->callApi<GetMembersByRoomJob>(
+                                    id, connection->nextBatchToken(), "join");
+    auto nextIndex = timeline.empty() ? 0 : timeline.back().index() + 1;
+    connect( allMembersJob, &BaseJob::success, q, [=] {
+        Q_ASSERT(timeline.empty() || nextIndex <= q->maxTimelineIndex() + 1);
+        Changes roomChanges = NoChange;
+        for (auto&& e: allMembersJob->chunk())
+        {
+            const auto& evt = *e;
+            baseState[{evt.matrixType(),evt.stateKey()}] = move(e);
+            roomChanges |= q->processStateEvent(evt);
+        }
+        // Replay member events that arrived after the point for which
+        // the full members list was requested.
+        if (!timeline.empty() )
+            for (auto it = q->findInTimeline(nextIndex).base();
+                 it != timeline.cend(); ++it)
+                if (is<RoomMemberEvent>(**it))
+                    roomChanges |= q->processStateEvent(**it);
+        if (roomChanges&MembersChange)
+            emit q->memberListChanged();
+        emit q->allMembersLoaded();
+    });
+}
+
 bool Room::displayed() const
 {
     return d->displayed;
@@ -568,6 +639,7 @@ void Room::setDisplayed(bool displayed)
     {
         resetHighlightCount();
         resetNotificationCount();
+        d->getAllMembers();
     }
 }
 
@@ -945,7 +1017,40 @@ int Room::timelineSize() const
 
 bool Room::usesEncryption() const
 {
-    return !d->encryptionAlgorithm.isEmpty();
+    return !d->getCurrentState<EncryptionEvent>()->algorithm().isEmpty();
+}
+
+int Room::joinedCount() const
+{
+    return d->summary.joinedMemberCount.omitted()
+            ? d->membersMap.size()
+            : d->summary.joinedMemberCount.value();
+}
+
+int Room::invitedCount() const
+{
+    // TODO: Store invited users in Room too
+    return d->summary.invitedMemberCount;
+}
+
+int Room::totalMemberCount() const
+{
+    return joinedCount() + invitedCount();
+}
+
+GetRoomEventsJob* Room::eventsHistoryJob() const
+{
+    return d->eventsHistoryJob;
+}
+
+Room::Changes Room::Private::setSummary(RoomSummary&& newSummary)
+{
+    if (!summary.merge(newSummary))
+        return Change::NoChange;
+    qCDebug(MAIN).nospace().noquote()
+        << "Updated room summary for " << q->objectName() << ": " << summary;
+    emit q->memberListChanged();
+    return Change::SummaryChange;
 }
 
 void Room::Private::insertMemberIntoMap(User *u)
@@ -1006,8 +1111,9 @@ Room::Timeline::difference_type Room::Private::moveEventsToTimeline(
 {
     Q_ASSERT(!events.empty());
     // Historical messages arrive in newest-to-oldest order, so the process for
-    // them is symmetric to the one for new messages.
-    auto index = timeline.empty() ? -int(placement) :
+    // them is almost symmetric to the one for new messages. New messages get
+    // appended from index 0; old messages go backwards from index -1.
+    auto index = timeline.empty() ? -((placement+1)/2) /* 1 -> -1; -1 -> 0 */ :
                  placement == Older ? timeline.front().index() :
                  timeline.back().index();
     auto baseIndex = index;
@@ -1028,7 +1134,7 @@ Room::Timeline::difference_type Room::Private::moveEventsToTimeline(
         eventsIndex.insert(eId, index);
         Q_ASSERT(q->findInTimeline(eId)->event()->id() == eId);
     }
-    const auto insertedSize = (index - baseIndex) * int(placement);
+    const auto insertedSize = (index - baseIndex) * placement;
     Q_ASSERT(insertedSize == int(events.size()));
     return insertedSize;
 }
@@ -1074,47 +1180,54 @@ QString Room::roomMembername(const QString& userId) const
     return roomMembername(user(userId));
 }
 
-void Room::updateData(SyncRoomData&& data)
+void Room::updateData(SyncRoomData&& data, bool fromCache)
 {
     if( d->prevBatch.isEmpty() )
         d->prevBatch = data.timelinePrevBatch;
     setJoinState(data.joinState);
 
+    Changes roomChanges = Change::NoChange;
     QElapsedTimer et; et.start();
     for (auto&& event: data.accountData)
-        processAccountDataEvent(move(event));
+        roomChanges |= processAccountDataEvent(move(event));
 
-    bool emitNamesChanged = false;
     if (!data.state.empty())
     {
         et.restart();
-        for (const auto& e: data.state)
-            emitNamesChanged |= processStateEvent(*e);
+        for (auto&& eptr: data.state)
+        {
+            const auto& evt = *eptr;
+            Q_ASSERT(evt.isStateEvent());
+            d->baseState[{evt.matrixType(),evt.stateKey()}] = move(eptr);
+            roomChanges |= processStateEvent(evt);
+        }
 
-        qCDebug(PROFILER) << "*** Room::processStateEvents():"
-                          << data.state.size() << "event(s)," << et;
+        if (data.state.size() > 9 || et.nsecsElapsed() >= profilerMinNsecs())
+            qCDebug(PROFILER) << "*** Room::processStateEvents():"
+                              << data.state.size() << "event(s)," << et;
     }
     if (!data.timeline.empty())
     {
         et.restart();
-        // State changes can arrive in a timeline event; so check those.
-        for (const auto& e: data.timeline)
-            emitNamesChanged |= processStateEvent(*e);
-        qCDebug(PROFILER) << "*** Room::processStateEvents(timeline):"
-                          << data.timeline.size() << "event(s)," << et;
+        roomChanges |= d->addNewMessageEvents(move(data.timeline));
+        if (data.timeline.size() > 9 || et.nsecsElapsed() >= profilerMinNsecs())
+            qCDebug(PROFILER) << "*** Room::addNewMessageEvents():"
+                              << data.timeline.size() << "event(s)," << et;
     }
-    if (emitNamesChanged)
+    if (roomChanges&TopicChange)
+        emit topicChanged();
+
+    if (roomChanges&NameChange)
         emit namesChanged(this);
+
+    if (roomChanges&MembersChange)
+        emit memberListChanged();
+
+    roomChanges |= d->setSummary(move(data.summary));
     d->updateDisplayname();
 
-    if (!data.timeline.empty())
-    {
-        et.restart();
-        d->addNewMessageEvents(move(data.timeline));
-        qCDebug(PROFILER) << "*** Room::addNewMessageEvents():" << et;
-    }
     for( auto&& ephemeralEvent: data.ephemeral )
-        processEphemeralEvent(move(ephemeralEvent));
+        roomChanges |= processEphemeralEvent(move(ephemeralEvent));
 
     // See https://github.com/QMatrixClient/libqmatrixclient/wiki/unread_count
     if (data.unreadCount != -2 && data.unreadCount != d->unreadMessages)
@@ -1134,6 +1247,12 @@ void Room::updateData(SyncRoomData&& data)
         d->notificationCount = data.notificationCount;
         emit notificationCountChanged(this);
     }
+    if (roomChanges != Change::NoChange)
+    {
+        emit changed(roomChanges);
+        if (!fromCache)
+            connection()->saveRoomState(this);
+    }
 }
 
 QString Room::Private::sendEvent(RoomEventPtr&& event)
@@ -1150,50 +1269,42 @@ QString Room::Private::sendEvent(RoomEventPtr&& event)
 QString Room::Private::doSendEvent(const RoomEvent* pEvent)
 {
     auto txnId = pEvent->transactionId();
-    // TODO: Enqueue the job rather than immediately trigger it
-    auto call = connection->callApi<SendMessageJob>(BackgroundRequest,
-                    id, pEvent->matrixType(), txnId, pEvent->contentJson());
-    Room::connect(call, &BaseJob::started, q,
-        [this,pEvent,txnId] {
-            auto it = findAsPending(pEvent);
-            if (it == unsyncedEvents.end())
-            {
-                qWarning(EVENTS) << "Pending event for transaction" << txnId
-                                 << "not found - got synced so soon?";
-                return;
-            }
-            it->setDeparted();
-            emit q->pendingEventChanged(it - unsyncedEvents.begin());
-        });
-    Room::connect(call, &BaseJob::failure, q,
-        [this,pEvent,txnId,call] {
-            auto it = findAsPending(pEvent);
-            if (it == unsyncedEvents.end())
-            {
-                qCritical(EVENTS) << "Pending event for transaction" << txnId
-                                  << "got lost without successful sending";
-                return;
-            }
-            it->setSendingFailed(
-                        call->statusCaption() % ": " % call->errorString());
-            emit q->pendingEventChanged(it - unsyncedEvents.begin());
+    // TODO, #133: Enqueue the job rather than immediately trigger it.
+    if (auto call = connection->callApi<SendMessageJob>(BackgroundRequest,
+                        id, pEvent->matrixType(), txnId, pEvent->contentJson()))
+    {
+        Room::connect(call, &BaseJob::started, q,
+            [this,pEvent,txnId] {
+                auto it = findAsPending(pEvent);
+                if (it == unsyncedEvents.end())
+                {
+                    qWarning(EVENTS) << "Pending event for transaction" << txnId
+                                     << "not found - got synced so soon?";
+                    return;
+                }
+                it->setDeparted();
+                emit q->pendingEventChanged(it - unsyncedEvents.begin());
+            });
+        Room::connect(call, &BaseJob::failure, q,
+            std::bind(&Room::Private::onEventSendingFailure,
+                      this, pEvent, txnId, call));
+        Room::connect(call, &BaseJob::success, q,
+            [this,call,pEvent,txnId] {
+                // Find an event by the pointer saved in the lambda (the pointer
+                // may be dangling by now but we can still search by it).
+                auto it = findAsPending(pEvent);
+                if (it == unsyncedEvents.end())
+                {
+                    qDebug(EVENTS) << "Pending event for transaction" << txnId
+                                   << "already merged";
+                    return;
+                }
 
-        });
-    Room::connect(call, &BaseJob::success, q,
-        [this,call,pEvent,txnId] {
-            // Find an event by the pointer saved in the lambda (the pointer
-            // may be dangling by now but we can still search by it).
-            auto it = findAsPending(pEvent);
-            if (it == unsyncedEvents.end())
-            {
-                qDebug(EVENTS) << "Pending event for transaction" << txnId
-                               << "already merged";
-                return;
-            }
-
-            it->setReachedServer(call->eventId());
-            emit q->pendingEventChanged(it - unsyncedEvents.begin());
-        });
+                it->setReachedServer(call->eventId());
+                emit q->pendingEventChanged(it - unsyncedEvents.begin());
+            });
+    } else
+        onEventSendingFailure(pEvent, txnId);
     return txnId;
 }
 
@@ -1204,6 +1315,22 @@ Room::PendingEvents::iterator Room::Private::findAsPending(
         [rawEvtPtr] (const auto& pe) { return pe.event() == rawEvtPtr; };
 
     return std::find_if(unsyncedEvents.begin(), unsyncedEvents.end(), comp);
+}
+
+void Room::Private::onEventSendingFailure(const RoomEvent* pEvent,
+        const QString& txnId, BaseJob* call)
+{
+    auto it = findAsPending(pEvent);
+    if (it == unsyncedEvents.end())
+    {
+        qCritical(EVENTS) << "Pending event for transaction" << txnId
+                          << "could not be sent";
+        return;
+    }
+    it->setSendingFailed(call
+        ? call->statusCaption() % ": " % call->errorString()
+        : tr("The call could not be started"));
+    emit q->pendingEventChanged(it - unsyncedEvents.begin());
 }
 
 QString Room::retryMessage(const QString& txnId)
@@ -1285,15 +1412,15 @@ bool isEchoEvent(const RoomEventPtr& le, const PendingEventItem& re)
     if (le->type() != re->type())
         return false;
 
-    if (!le->id().isEmpty())
+    if (!re->id().isEmpty())
         return le->id() == re->id();
-    if (!le->transactionId().isEmpty())
+    if (!re->transactionId().isEmpty())
         return le->transactionId() == re->transactionId();
 
     // This one is not reliable (there can be two unsynced
     // events with the same type, sender and state key) but
     // it's the best we have for state events.
-    if (le->isStateEvent())
+    if (re->isStateEvent())
         return le->stateKey() == re->stateKey();
 
     // Empty id and no state key, hmm... (shrug)
@@ -1302,7 +1429,7 @@ bool isEchoEvent(const RoomEventPtr& le, const PendingEventItem& re)
 
 bool Room::supportsCalls() const
 {
-  return d->membersMap.size() == 2;
+  return joinedCount() == 2;
 }
 
 void Room::inviteCall(const QString& callId, const int lifetime,
@@ -1345,15 +1472,18 @@ void Room::getPreviousContent(int limit)
 
 void Room::Private::getPreviousContent(int limit)
 {
-    if( !isJobRunning(eventsHistoryJob) )
-    {
-        eventsHistoryJob =
-            connection->callApi<GetRoomEventsJob>(id, prevBatch, "b", "", limit);
-        connect( eventsHistoryJob, &BaseJob::success, q, [=] {
-            prevBatch = eventsHistoryJob->end();
-            addHistoricalMessageEvents(eventsHistoryJob->chunk());
-        });
-    }
+    if (isJobRunning(eventsHistoryJob))
+        return;
+
+    eventsHistoryJob =
+        connection->callApi<GetRoomEventsJob>(id, prevBatch, "b", "", limit);
+    emit q->eventsHistoryJobChanged();
+    connect( eventsHistoryJob, &BaseJob::success, q, [=] {
+        prevBatch = eventsHistoryJob->end();
+        addHistoricalMessageEvents(eventsHistoryJob->chunk());
+    });
+    connect( eventsHistoryJob, &QObject::destroyed,
+             q, &Room::eventsHistoryJobChanged);
 }
 
 void Room::inviteToRoom(const QString& memberId)
@@ -1587,11 +1717,26 @@ bool Room::Private::processRedaction(const RedactionEvent& redaction)
         return true;
     }
 
-    // Make a new event from the redacted JSON, exchange events,
-    // notify everyone and delete the old event
+    // Make a new event from the redacted JSON and put it in the timeline
+    // instead of the redacted one. oldEvent will be deleted on return.
     auto oldEvent = ti.replaceEvent(makeRedacted(*ti, redaction));
-    q->onRedaction(*oldEvent, *ti.event());
     qCDebug(MAIN) << "Redacted" << oldEvent->id() << "with" << redaction.id();
+    if (oldEvent->isStateEvent())
+    {
+        const StateEventKey evtKey { oldEvent->matrixType(), oldEvent->stateKey() };
+        Q_ASSERT(currentState.contains(evtKey));
+        if (currentState[evtKey] == oldEvent.get())
+        {
+            Q_ASSERT(ti.index() >= 0); // Historical states can't be in currentState
+            qCDebug(MAIN).nospace() << "Reverting state "
+                << oldEvent->matrixType() << "/" << oldEvent->stateKey();
+            // Retarget the current state to the newly made event.
+            if (q->processStateEvent(*ti))
+                emit q->namesChanged(q);
+            updateDisplayname();
+        }
+    }
+    q->onRedaction(*oldEvent, *ti);
     emit q->replacedEvent(ti.event(), rawPtr(oldEvent));
     return true;
 }
@@ -1613,48 +1758,49 @@ inline bool isRedaction(const RoomEventPtr& ep)
     return is<RedactionEvent>(*ep);
 }
 
-void Room::Private::addNewMessageEvents(RoomEvents&& events)
+Room::Changes Room::Private::addNewMessageEvents(RoomEvents&& events)
 {
     dropDuplicateEvents(events);
+    if (events.empty())
+        return Change::NoChange;
 
     // Pre-process redactions so that events that get redacted in the same
     // batch landed in the timeline already redacted.
-    // XXX: The code below is written (and commented) so that it could be
-    // quickly converted to not-saving redaction events in the timeline.
-    // See #220 for details.
-    auto newEnd = std::find_if(events.begin(), events.end(), isRedaction);
-    // Either process the redaction, or shift the non-redaction event
-    // overwriting redactions in a remove_if fashion.
-    for(const auto& eptr: RoomEventsRange(newEnd, events.end()))
+    // NB: We have to store redaction events to the timeline too - see #220.
+    auto redactionIt = std::find_if(events.begin(), events.end(), isRedaction);
+    for(const auto& eptr: RoomEventsRange(redactionIt, events.end()))
         if (auto* r = eventCast<RedactionEvent>(eptr))
         {
             // Try to find the target in the timeline, then in the batch.
             if (processRedaction(*r))
                 continue;
-            auto targetIt = std::find_if(events.begin(), newEnd,
+            auto targetIt = std::find_if(events.begin(), redactionIt,
                 [id=r->redactedEvent()] (const RoomEventPtr& ep) {
                     return ep->id() == id;
                 });
-            if (targetIt != newEnd)
+            if (targetIt != redactionIt)
                 *targetIt = makeRedacted(**targetIt, *r);
             else
                 qCDebug(MAIN) << "Redaction" << r->id()
                               << "ignored: target event" << r->redactedEvent()
                               << "is not found";
-            // If the target events comes later, it comes already redacted.
+            // If the target event comes later, it comes already redacted.
         }
-//        else // This should be uncommented once we stop adding redactions to the timeline
-//            *newEnd++ = std::move(eptr);
-    newEnd = events.end(); // This line should go if/when we stop adding redactions to the timeline
 
-    if (events.begin() == newEnd)
-        return;
+    // State changes arrive as a part of timeline; the current room state gets
+    // updated before merging events to the timeline because that's what
+    // clients historically expect. This may eventually change though if we
+    // postulate that the current state is only current between syncs but not
+    // within a sync.
+    Changes roomChanges = Change::NoChange;
+    for (const auto& eptr: events)
+        roomChanges |= q->processStateEvent(*eptr);
 
     auto timelineSize = timeline.size();
     auto totalInserted = 0;
-    for (auto it = events.begin(); it != newEnd;)
+    for (auto it = events.begin(); it != events.end();)
     {
-        auto nextPendingPair = findFirstOf(it, newEnd,
+        auto nextPendingPair = findFirstOf(it, events.end(),
                     unsyncedEvents.begin(), unsyncedEvents.end(), isEchoEvent);
         auto nextPending = nextPendingPair.first;
 
@@ -1668,7 +1814,7 @@ void Room::Private::addNewMessageEvents(RoomEvents&& events)
             q->onAddNewTimelineEvents(firstInserted);
             emit q->addedMessages(firstInserted->index(), timeline.back().index());
         }
-        if (nextPending == newEnd)
+        if (nextPending == events.end())
             break;
 
         it = nextPending + 1;
@@ -1696,7 +1842,7 @@ void Room::Private::addNewMessageEvents(RoomEvents&& events)
     if (totalInserted > 0)
     {
         qCDebug(MAIN)
-                << "Room" << displayname << "received" << totalInserted
+                << "Room" << q->objectName() << "received" << totalInserted
                 << "new events; the last event is now" << timeline.back();
 
         // The first event in the just-added batch (referred to by `from`)
@@ -1708,30 +1854,44 @@ void Room::Private::addNewMessageEvents(RoomEvents&& events)
         auto firstWriter = q->user((*from)->senderId());
         if (q->readMarker(firstWriter) != timeline.crend())
         {
-            promoteReadMarker(firstWriter, rev_iter_t(from) - 1);
+            roomChanges |= promoteReadMarker(firstWriter, rev_iter_t(from) - 1);
             qCDebug(MAIN) << "Auto-promoted read marker for" << firstWriter->id()
                           << "to" << *q->readMarker(firstWriter);
         }
 
         updateUnreadCount(timeline.crbegin(), rev_iter_t(from));
+        roomChanges |= Change::UnreadNotifsChange;
     }
 
     Q_ASSERT(timeline.size() == timelineSize + totalInserted);
+    return roomChanges;
 }
 
 void Room::Private::addHistoricalMessageEvents(RoomEvents&& events)
 {
+    QElapsedTimer et; et.start();
     const auto timelineSize = timeline.size();
 
     dropDuplicateEvents(events);
-    RoomEventsRange normalEvents {
-        events.begin(), events.end() //remove_if(events.begin(), events.end(), isRedaction)
-    };
-    if (normalEvents.empty())
+    if (events.empty())
         return;
 
-    emit q->aboutToAddHistoricalMessages(normalEvents);
-    const auto insertedSize = moveEventsToTimeline(normalEvents, Older);
+    // In case of lazy-loading new members may be loaded with historical
+    // messages. Also, the cache doesn't store events with empty content;
+    // so when such events show up in the timeline they should be properly
+    // incorporated.
+    for (const auto& eptr: events)
+    {
+        const auto& e = *eptr;
+        if (e.isStateEvent() &&
+                !currentState.contains({e.matrixType(), e.stateKey()}))
+        {
+            q->processStateEvent(e);
+        }
+    }
+
+    emit q->aboutToAddHistoricalMessages(events);
+    const auto insertedSize = moveEventsToTimeline(events, Older);
     const auto from = timeline.crend() - insertedSize;
 
     qCDebug(MAIN) << "Room" << displayname << "received" << insertedSize
@@ -1743,51 +1903,46 @@ void Room::Private::addHistoricalMessageEvents(RoomEvents&& events)
         updateUnreadCount(from, timeline.crend());
 
     Q_ASSERT(timeline.size() == timelineSize + insertedSize);
+    if (insertedSize > 9 || et.nsecsElapsed() >= profilerMinNsecs())
+        qCDebug(PROFILER) << "*** Room::addHistoricalMessageEvents():"
+                          << insertedSize << "event(s)," << et;
 }
 
-bool Room::processStateEvent(const RoomEvent& e)
+Room::Changes Room::processStateEvent(const RoomEvent& e)
 {
+    if (!e.isStateEvent())
+        return Change::NoChange;
+
+    d->currentState[{e.matrixType(),e.stateKey()}] =
+            static_cast<const StateEventBase*>(&e);
+    if (!is<RoomMemberEvent>(e))
+        qCDebug(EVENTS) << "Room state event:" << e;
+
     return visit(e
-        , [this] (const RoomNameEvent& evt) {
-            d->name = evt.name();
-            qCDebug(MAIN) << "Room name updated:" << d->name;
-            return true;
+        , [] (const RoomNameEvent&) {
+            return NameChange;
         }
-        , [this] (const RoomAliasesEvent& evt) {
-            d->aliases = evt.aliases();
-            qCDebug(MAIN) << "Room aliases updated:" << d->aliases;
-            return true;
+        , [] (const RoomAliasesEvent&) {
+            return OtherChange;
         }
         , [this] (const RoomCanonicalAliasEvent& evt) {
-            d->canonicalAlias = evt.alias();
-            if (!d->canonicalAlias.isEmpty())
-                setObjectName(d->canonicalAlias);
-            qCDebug(MAIN) << "Room canonical alias updated:"
-                          << d->canonicalAlias;
-            return true;
+            setObjectName(evt.alias().isEmpty() ? d->id : evt.alias());
+            return CanonicalAliasChange;
         }
-        , [this] (const RoomTopicEvent& evt) {
-            d->topic = evt.topic();
-            qCDebug(MAIN) << "Room topic updated:" << d->topic;
-            emit topicChanged();
-            return false;
+        , [] (const RoomTopicEvent&) {
+            return TopicChange;
         }
         , [this] (const RoomAvatarEvent& evt) {
             if (d->avatar.updateUrl(evt.url()))
-            {
-                qCDebug(MAIN) << "Room avatar URL updated:"
-                              << evt.url().toString();
                 emit avatarChanged();
-            }
-            return false;
+            return AvatarChange;
         }
         , [this] (const RoomMemberEvent& evt) {
             auto* u = user(evt.userId());
             u->processEvent(evt, this);
             if (u == localUser() && memberJoinState(u) == JoinState::Invite
                     && evt.isDirect())
-                connection()->addToDirectChats(this,
-                                user(evt.senderId()));
+                connection()->addToDirectChats(this, user(evt.senderId()));
 
             if( evt.membership() == MembershipType::Join )
             {
@@ -1807,30 +1962,30 @@ bool Room::processStateEvent(const RoomEvent& e)
                     emit userAdded(u);
                 }
             }
-            else if( evt.membership() == MembershipType::Leave )
+            else if( evt.membership() != MembershipType::Join )
             {
                 if (memberJoinState(u) == JoinState::Join)
                 {
+                    if (evt.membership() == MembershipType::Invite)
+                        qCWarning(MAIN) << "Invalid membership change:" << evt;
                     if (!d->membersLeft.contains(u))
                         d->membersLeft.append(u);
                     d->removeMemberFromMap(u->name(this), u);
                     emit userRemoved(u);
                 }
             }
-            return false;
+            return MembersChange;
         }
-        , [this] (const EncryptionEvent& evt) {
-            d->encryptionAlgorithm = evt.algorithm();
-            qCDebug(MAIN) << "Encryption switched on in room" << id()
-                          << "with algorithm" << d->encryptionAlgorithm;
-            emit encryption();
-            return false;
+        , [this] (const EncryptionEvent&) {
+            emit encryption(); // It can only be done once, so emit it here.
+            return EncryptionOn;
         }
     );
 }
 
-void Room::processEphemeralEvent(EventPtr&& event)
+Room::Changes Room::processEphemeralEvent(EventPtr&& event)
 {
+    Changes changes = NoChange;
     QElapsedTimer et; et.start();
     if (auto* evt = eventCast<TypingEvent>(event))
     {
@@ -1841,15 +1996,17 @@ void Room::processEphemeralEvent(EventPtr&& event)
             if (memberJoinState(u) == JoinState::Join)
                 d->usersTyping.append(u);
         }
-        if (!evt->users().isEmpty())
+        if (evt->users().size() > 3 || et.nsecsElapsed() >= profilerMinNsecs())
             qCDebug(PROFILER) << "*** Room::processEphemeralEvent(typing):"
                 << evt->users().size() << "users," << et;
         emit typingChanged();
     }
     if (auto* evt = eventCast<ReceiptEvent>(event))
     {
+        int totalReceipts = 0;
         for( const auto &p: qAsConst(evt->eventsWithReceipts()) )
         {
+            totalReceipts += p.receipts.size();
             {
                 if (p.receipts.size() == 1)
                     qCDebug(EPHEMERAL) << "Marking" << p.evtId
@@ -1867,7 +2024,7 @@ void Room::processEphemeralEvent(EventPtr&& event)
                         continue; // FIXME, #185
                     auto u = user(r.userId);
                     if (memberJoinState(u) == JoinState::Join)
-                        d->promoteReadMarker(u, newMarker);
+                        changes |= d->promoteReadMarker(u, newMarker);
                 }
             } else
             {
@@ -1884,21 +2041,27 @@ void Room::processEphemeralEvent(EventPtr&& event)
                     auto u = user(r.userId);
                     if (memberJoinState(u) == JoinState::Join &&
                             readMarker(u) == timelineEdge())
-                        d->setLastReadEvent(u, p.evtId);
+                        changes |= d->setLastReadEvent(u, p.evtId);
                 }
             }
         }
-        if (!evt->eventsWithReceipts().isEmpty())
+        if (evt->eventsWithReceipts().size() > 3 || totalReceipts > 10 ||
+                et.nsecsElapsed() >= profilerMinNsecs())
             qCDebug(PROFILER) << "*** Room::processEphemeralEvent(receipts):"
                 << evt->eventsWithReceipts().size()
-                << "events with receipts," << et;
+                << "event(s) with" << totalReceipts << "receipt(s)," << et;
     }
+    return changes;
 }
 
-void Room::processAccountDataEvent(EventPtr&& event)
+Room::Changes Room::processAccountDataEvent(EventPtr&& event)
 {
+    Changes changes = NoChange;
     if (auto* evt = eventCast<TagEvent>(event))
+    {
         d->setTags(evt->tags());
+        changes |= Change::TagsChange;
+    }
 
     if (auto* evt = eventCast<ReadMarkerEvent>(event))
     {
@@ -1906,10 +2069,9 @@ void Room::processAccountDataEvent(EventPtr&& event)
         qCDebug(MAIN) << "Server-side read marker at" << readEventId;
         d->serverReadMarker = readEventId;
         const auto newMarker = findInTimeline(readEventId);
-        if (newMarker != timelineEdge())
-            d->markMessagesAsRead(newMarker);
-        else
-            d->setLastReadEvent(localUser(), readEventId);
+        changes |= newMarker != timelineEdge()
+            ? d->markMessagesAsRead(newMarker)
+            : d->setLastReadEvent(localUser(), readEventId);
     }
     // For all account data events
     auto& currentData = d->accountData[event->matrixType()];
@@ -1922,53 +2084,40 @@ void Room::processAccountDataEvent(EventPtr&& event)
         qCDebug(MAIN) << "Updated account data of type"
                       << currentData->matrixType();
         emit accountDataChanged(currentData->matrixType());
+        return Change::AccountDataChange;
     }
+    return Change::NoChange;
 }
 
-QString Room::Private::roomNameFromMemberNames(const QList<User *> &userlist) const
+template <typename ContT>
+Room::Private::users_shortlist_t
+Room::Private::buildShortlist(const ContT& users) const
 {
-    // This is part 3(i,ii,iii) in the room displayname algorithm described
-    // in the CS spec (see also Room::Private::updateDisplayname() ).
-    // The spec requires to sort users lexicographically by state_key (user id)
-    // and use disambiguated display names of two topmost users excluding
-    // the current one to render the name of the room.
-
-    // std::array is the leanest C++ container
-    std::array<User*, 2> first_two = { {nullptr, nullptr} };
+    // To calculate room display name the spec requires to sort users
+    // lexicographically by state_key (user id) and use disambiguated
+    // display names of two topmost users excluding the current one to render
+    // the name of the room. The below code selects 3 topmost users,
+    // slightly extending the spec.
+    users_shortlist_t shortlist { }; // Prefill with nullptrs
     std::partial_sort_copy(
-        userlist.begin(), userlist.end(),
-        first_two.begin(), first_two.end(),
-        [this](const User* u1, const User* u2) {
-            // Filter out the "me" user so that it never hits the room name
+        users.begin(), users.end(),
+        shortlist.begin(), shortlist.end(),
+        [this] (const User* u1, const User* u2) {
+            // localUser(), if it's in the list, is sorted below all others
             return isLocalUser(u2) || (!isLocalUser(u1) && u1->id() < u2->id());
         }
     );
+    return shortlist;
+}
 
-    // Spec extension. A single person in the chat but not the local user
-    // (the local user is invited).
-    if (userlist.size() == 1 && !isLocalUser(first_two.front()) &&
-            joinState == JoinState::Invite)
-        return tr("Invitation from %1")
-                .arg(q->roomMembername(first_two.front()));
-
-    // i. One-on-one chat. first_two[1] == localUser() in this case.
-    if (userlist.size() == 2)
-        return q->roomMembername(first_two[0]);
-
-    // ii. Two users besides the current one.
-    if (userlist.size() == 3)
-        return tr("%1 and %2")
-                .arg(q->roomMembername(first_two[0]),
-                     q->roomMembername(first_two[1]));
-
-    // iii. More users.
-    if (userlist.size() > 3)
-        return tr("%1 and %L2 others")
-                .arg(q->roomMembername(first_two[0]))
-                .arg(userlist.size() - 3);
-
-    // userlist.size() < 2 - apparently, there's only current user in the room
-    return QString();
+Room::Private::users_shortlist_t
+Room::Private::buildShortlist(const QStringList& userIds) const
+{
+    QList<User*> users;
+    users.reserve(userIds.size());
+    for (const auto& h: userIds)
+        users.push_back(q->user(h));
+    return buildShortlist(users);
 }
 
 QString Room::Private::calculateDisplayname() const
@@ -1977,27 +2126,56 @@ QString Room::Private::calculateDisplayname() const
     // Numbers below refer to respective parts in the spec.
 
     // 1. Name (from m.room.name)
-    if (!name.isEmpty()) {
-        return name;
+    auto dispName = q->name();
+    if (!dispName.isEmpty()) {
+        return dispName;
     }
 
     // 2. Canonical alias
-    if (!canonicalAlias.isEmpty())
-        return canonicalAlias;
+    dispName = q->canonicalAlias();
+    if (!dispName.isEmpty())
+        return dispName;
 
     // Using m.room.aliases in naming is explicitly discouraged by the spec
-    //if (!aliases.empty() && !aliases.at(0).isEmpty())
-    //    return aliases.at(0);
+    //if (!q->aliases().empty() && !q->aliases().at(0).isEmpty())
+    //    return q->aliases().at(0);
+
+    // Supplementary code for 3 and 4: build the shortlist of users whose names
+    // will be used to construct the room name. Takes into account MSC688's
+    // "heroes" if available.
+
+    const bool emptyRoom = membersMap.isEmpty() ||
+             (membersMap.size() == 1 && isLocalUser(*membersMap.begin()));
+    const auto shortlist =
+            !summary.heroes.omitted() ? buildShortlist(summary.heroes.value()) :
+            !emptyRoom ? buildShortlist(membersMap) :
+                         buildShortlist(membersLeft);
+
+    QStringList names;
+    for (auto u: shortlist)
+    {
+        if (u == nullptr || isLocalUser(u))
+            break;
+        names.push_back(q->roomMembername(u));
+    }
+
+    auto usersCountExceptLocal = emptyRoom
+            ? membersLeft.size() - int(joinState == JoinState::Leave)
+            : q->joinedCount() - int(joinState == JoinState::Join);
+    if (usersCountExceptLocal > int(shortlist.size()))
+        names <<
+            tr("%Ln other(s)",
+               "Used to make a room name from user names: A, B and _N others_",
+               usersCountExceptLocal);
+    auto namesList = QLocale().createSeparatedList(names);
 
     // 3. Room members
-    QString topMemberNames = roomNameFromMemberNames(membersMap.values());
-    if (!topMemberNames.isEmpty())
-        return topMemberNames;
+    if (!emptyRoom)
+        return namesList;
 
     // 4. Users that previously left the room
-    topMemberNames = roomNameFromMemberNames(membersLeft);
-    if (!topMemberNames.isEmpty())
-        return tr("Empty room (was: %1)").arg(topMemberNames);
+    if (membersLeft.size() > 0)
+        return tr("Empty room (was: %1)").arg(namesList);
 
     // 5. Fail miserably
     return tr("Empty room (%1)").arg(id);
@@ -2016,58 +2194,27 @@ void Room::Private::updateDisplayname()
     }
 }
 
-void appendStateEvent(QJsonArray& events, const QString& type,
-                      const QJsonObject& content, const QString& stateKey = {})
-{
-    if (!content.isEmpty() || !stateKey.isEmpty())
-    {
-        auto json = basicEventJson(type, content);
-        json.insert(QStringLiteral("state_key"), stateKey);
-        events.append(json);
-    }
-}
-
-#define ADD_STATE_EVENT(events, type, name, content) \
-    appendStateEvent((events), QStringLiteral(type), \
-                     {{ QStringLiteral(name), content }});
-
-void appendEvent(QJsonArray& events, const QString& type,
-                 const QJsonObject& content)
-{
-    if (!content.isEmpty())
-        events.append(basicEventJson(type, content));
-}
-
-template <typename EvtT>
-void appendEvent(QJsonArray& events, const EvtT& event)
-{
-    appendEvent(events, EvtT::matrixTypeId(), event.toJson());
-}
-
 QJsonObject Room::Private::toJson() const
 {
     QElapsedTimer et; et.start();
     QJsonObject result;
+    addParam<IfNotEmpty>(result, QStringLiteral("summary"), summary);
     {
         QJsonArray stateEvents;
 
-        ADD_STATE_EVENT(stateEvents, "m.room.name", "name", name);
-        ADD_STATE_EVENT(stateEvents, "m.room.topic", "topic", topic);
-        ADD_STATE_EVENT(stateEvents, "m.room.avatar", "url",
-                        avatar.url().toString());
-        ADD_STATE_EVENT(stateEvents, "m.room.aliases", "aliases",
-                        QJsonArray::fromStringList(aliases));
-        ADD_STATE_EVENT(stateEvents, "m.room.canonical_alias", "alias",
-                        canonicalAlias);
-        ADD_STATE_EVENT(stateEvents, "m.room.encryption", "algorithm",
-                        encryptionAlgorithm);
+        for (const auto* evt: currentState)
+        {
+            Q_ASSERT(evt->isStateEvent());
+            if ((evt->isRedacted() && !is<RoomMemberEvent>(*evt)) ||
+                    evt->contentJson().isEmpty())
+                continue;
 
-        for (const auto *m : membersMap)
-            appendStateEvent(stateEvents, QStringLiteral("m.room.member"),
-                { { QStringLiteral("membership"), QStringLiteral("join") }
-                , { QStringLiteral("displayname"), m->rawName(q) }
-                , { QStringLiteral("avatar_url"), m->avatarUrl(q).toString() }
-            }, m->id());
+            auto json = evt->fullJson();
+            auto unsignedJson = evt->unsignedJson();
+            unsignedJson.remove(QStringLiteral("prev_content"));
+            json[UnsignedKeyL] = unsignedJson;
+            stateEvents.append(json);
+        }
 
         const auto stateObjName = joinState == JoinState::Invite ?
                     QStringLiteral("invite_state") : QStringLiteral("state");
@@ -2075,14 +2222,17 @@ QJsonObject Room::Private::toJson() const
             QJsonObject {{ QStringLiteral("events"), stateEvents }});
     }
 
-    QJsonArray accountDataEvents;
     if (!accountData.empty())
     {
+        QJsonArray accountDataEvents;
         for (const auto& e: accountData)
-            appendEvent(accountDataEvents, e.first, e.second->contentJson());
+        {
+            if (!e.second->contentJson().isEmpty())
+                accountDataEvents.append(e.second->fullJson());
+        }
+        result.insert(QStringLiteral("account_data"),
+                      QJsonObject {{ QStringLiteral("events"), accountDataEvents }});
     }
-    result.insert(QStringLiteral("account_data"),
-                  QJsonObject {{ QStringLiteral("events"), accountDataEvents }});
 
     QJsonObject unreadNotifObj
         { { SyncRoomData::UnreadCountKey, unreadMessages } };
@@ -2094,7 +2244,7 @@ QJsonObject Room::Private::toJson() const
 
     result.insert(QStringLiteral("unread_notifications"), unreadNotifObj);
 
-    if (et.elapsed() > 50)
+    if (et.elapsed() > 30)
         qCDebug(PROFILER) << "Room::toJson() for" << displayname << "took" << et;
 
     return result;

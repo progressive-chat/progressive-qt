@@ -122,6 +122,8 @@ namespace QMatrixClient
             Q_PROPERTY(QByteArray accessToken READ accessToken NOTIFY stateChanged)
             Q_PROPERTY(QUrl homeserver READ homeserver WRITE setHomeserver NOTIFY homeserverChanged)
             Q_PROPERTY(bool cacheState READ cacheState WRITE setCacheState NOTIFY cacheStateChanged)
+            Q_PROPERTY(bool lazyLoading READ lazyLoading WRITE setLazyLoading NOTIFY lazyLoadingChanged)
+
         public:
             // Room ids, rather than room pointers, are used in the direct chat
             // map types because the library keeps Invite rooms separate from
@@ -280,7 +282,7 @@ namespace QMatrixClient
              * to be QML-friendly. Empty parameter means using a path
              * defined by stateCachePath().
              */
-            Q_INVOKABLE void loadState(const QUrl &fromFile = {});
+            Q_INVOKABLE void loadState();
             /**
              * This method saves the current state of rooms (but not messages
              * in them) to a local cache file, so that it could be loaded by
@@ -290,7 +292,10 @@ namespace QMatrixClient
              * QML-friendly. Empty parameter means using a path defined by
              * stateCachePath().
              */
-            Q_INVOKABLE void saveState(const QUrl &toFile = {}) const;
+            Q_INVOKABLE void saveState() const;
+
+            /// This method saves the current state of a single room.
+            void saveRoomState(Room* r) const;
 
             /**
              * The default path to store the cached room state, defined as
@@ -304,6 +309,9 @@ namespace QMatrixClient
 
             bool cacheState() const;
             void setCacheState(bool newValue);
+
+            bool lazyLoading() const;
+            void setLazyLoading(bool newValue);
 
             /** Start a job of a specified type with specified arguments and policy
              *
@@ -382,6 +390,7 @@ namespace QMatrixClient
 
             void sync(int timeout = -1);
             void stopSync();
+            QString nextBatchToken() const;
 
             virtual MediaThumbnailJob* getThumbnail(const QString& mediaId,
                 QSize requestedSize, RunningPolicy policy = BackgroundRequest) const;
@@ -461,7 +470,8 @@ namespace QMatrixClient
             CreateRoomJob* createDirectChat(const QString& userId,
                 const QString& topic = {}, const QString& name = {});
 
-            virtual JoinRoomJob* joinRoom(const QString& roomAlias);
+            virtual JoinRoomJob* joinRoom(const QString& roomAlias,
+                                          const QStringList& serverNames = {});
 
             /** Sends /forget to the server and also deletes room locally.
              * This method is in Connection, not in Room, since it's a
@@ -518,7 +528,7 @@ namespace QMatrixClient
              * a successful login and logout and are constant at other times.
              */
             void stateChanged();
-            void loginError(QString message, QByteArray details);
+            void loginError(QString message, QString details);
 
             /** A network request (job) failed
              *
@@ -536,11 +546,11 @@ namespace QMatrixClient
              * @param retriesTaken - how many retries have already been taken
              * @param nextRetryInMilliseconds - when the job will retry again
              */
-            void networkError(QString message, QByteArray details,
+            void networkError(QString message, QString details,
                               int retriesTaken, int nextRetryInMilliseconds);
 
             void syncDone();
-            void syncError(QString message, QByteArray details);
+            void syncError(QString message, QString details);
 
             void newUser(User* user);
 
@@ -651,6 +661,7 @@ namespace QMatrixClient
                                          IgnoredUsersList removals);
 
             void cacheStateChanged();
+            void lazyLoadingChanged();
             void turnServersChanged(const QJsonObject& servers);
 
         protected:
@@ -673,7 +684,7 @@ namespace QMatrixClient
             /**
              * Completes loading sync data.
              */
-            void onSyncSuccess(SyncData &&data);
+            void onSyncSuccess(SyncData &&data, bool fromCache = false);
 
         private:
             class Private;

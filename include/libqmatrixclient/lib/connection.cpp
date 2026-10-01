@@ -39,7 +39,6 @@
 #include <QtNetwork/QDnsLookup>
 #include <QtCore/QFile>
 #include <QtCore/QDir>
-#include <QtCore/QFileInfo>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QStringBuilder>
 #include <QtCore/QElapsedTimer>
@@ -64,10 +63,6 @@ HashT erase_if(HashT& hashMap, Pred pred)
     }
     return removals;
 }
-
-#ifndef TRIM_RAW_DATA
-#define TRIM_RAW_DATA 65535
-#endif
 
 class Connection::Private
 {
@@ -99,6 +94,7 @@ class Connection::Private
         bool cacheState = true;
         bool cacheToBinary = SettingsGroup("libqmatrixclient")
                              .value("cache_type").toString() != "json";
+        bool lazyLoading = false;
 
         void connectWithToken(const QString& user, const QString& accessToken,
                               const QString& deviceId);
@@ -228,8 +224,7 @@ void Connection::doConnectToServer(const QString& user, const QString& password,
         });
     connect(loginJob, &BaseJob::failure, this,
         [this, loginJob] {
-            emit loginError(loginJob->errorString(),
-                            loginJob->rawData(TRIM_RAW_DATA));
+            emit loginError(loginJob->errorString(), loginJob->rawDataSample());
         });
 }
 
@@ -293,11 +288,11 @@ void Connection::sync(int timeout)
     if (d->syncJob)
         return;
 
-    // Raw string: http://en.cppreference.com/w/cpp/language/string_literal
-    const auto filter =
-        QStringLiteral(R"({"room": { "timeline": { "limit": 100 } } })");
+    Filter filter;
+    filter.room->timeline->limit = 100;
+    filter.room->state->lazyLoadMembers = d->lazyLoading;
     auto job = d->syncJob = callApi<SyncJob>(BackgroundRequest,
-                                         d->data->lastEvent(), filter, timeout);
+                                d->data->lastEvent(), filter, timeout);
     connect( job, &SyncJob::success, this, [this, job] {
         onSyncSuccess(job->takeData());
         d->syncJob = nullptr;
@@ -306,7 +301,7 @@ void Connection::sync(int timeout)
     connect( job, &SyncJob::retryScheduled, this,
         [this,job] (int retriesTaken, int nextInMilliseconds)
         {
-            emit networkError(job->errorString(), job->rawData(TRIM_RAW_DATA),
+            emit networkError(job->errorString(), job->rawDataSample(),
                               retriesTaken, nextInMilliseconds);
         });
     connect( job, &SyncJob::failure, this, [this, job] {
@@ -315,14 +310,14 @@ void Connection::sync(int timeout)
         {
             qCWarning(SYNCJOB)
                 << "Sync job failed with ContentAccessError - login expired?";
-            emit loginError(job->errorString(), job->rawData(TRIM_RAW_DATA));
+            emit loginError(job->errorString(), job->rawDataSample());
         }
         else
-            emit syncError(job->errorString(), job->rawData(TRIM_RAW_DATA));
+            emit syncError(job->errorString(), job->rawDataSample());
     });
 }
 
-void Connection::onSyncSuccess(SyncData &&data) {
+void Connection::onSyncSuccess(SyncData &&data, bool fromCache) {
     d->data->setLastEvent(data.nextBatch());
     for (auto&& roomData: data.takeRoomData())
     {
@@ -343,7 +338,7 @@ void Connection::onSyncSuccess(SyncData &&data) {
         }
         if ( auto* r = provideRoom(roomData.roomId, roomData.joinState) )
         {
-            r->updateData(std::move(roomData));
+            r->updateData(std::move(roomData), fromCache);
             if (d->firstTimeRooms.removeOne(r))
                 emit loadedRoomState(r);
         }
@@ -417,14 +412,20 @@ void Connection::stopSync()
     }
 }
 
+QString Connection::nextBatchToken() const
+{
+    return d->data->lastEvent();
+}
+
 PostReceiptJob* Connection::postReceipt(Room* room, RoomEvent* event) const
 {
     return callApi<PostReceiptJob>(room->id(), "m.read", event->id());
 }
 
-JoinRoomJob* Connection::joinRoom(const QString& roomAlias)
+JoinRoomJob* Connection::joinRoom(const QString& roomAlias,
+                                  const QStringList& serverNames)
 {
-    auto job = callApi<JoinRoomJob>(roomAlias);
+    auto job = callApi<JoinRoomJob>(roomAlias, serverNames);
     connect(job, &JoinRoomJob::success,
             this, [this, job] { provideRoom(job->roomId(), JoinState::Join); });
     return job;
@@ -566,7 +567,7 @@ void Connection::doInDirectChat(User* u,
         {
             Q_ASSERT(r->id() == roomId);
             // A direct chat with yourself should only involve yourself :)
-            if (userId == d->userId && r->memberCount() > 1)
+            if (userId == d->userId && r->totalMemberCount() > 1)
                 continue;
             qCDebug(MAIN) << "Requested direct chat with" << userId
                           << "is already available as" << r->id();
@@ -830,7 +831,7 @@ QHash<QString, QVector<Room*>> Connection::tagsToRooms() const
     for (auto it = result.begin(); it != result.end(); ++it)
         std::sort(it->begin(), it->end(),
             [t=it.key()] (Room* r1, Room* r2) {
-                return r1->tags().value(t).order < r2->tags().value(t).order;
+                return r1->tags().value(t) < r2->tags().value(t);
             });
     return result;
 }
@@ -1063,47 +1064,54 @@ void Connection::setHomeserver(const QUrl& url)
     emit homeserverChanged(homeserver());
 }
 
-static constexpr int CACHE_VERSION_MAJOR = 8;
-static constexpr int CACHE_VERSION_MINOR = 0;
+void Connection::saveRoomState(Room* r) const
+{
+    Q_ASSERT(r);
+    if (!d->cacheState)
+        return;
 
-void Connection::saveState(const QUrl &toFile) const
+    QFile outRoomFile { stateCachePath() % SyncData::fileNameForRoom(r->id()) };
+    if (outRoomFile.open(QFile::WriteOnly))
+    {
+        QJsonDocument json { r->toJson() };
+        auto data = d->cacheToBinary ? json.toBinaryData()
+                                     : json.toJson(QJsonDocument::Compact);
+        outRoomFile.write(data.data(), data.size());
+        qCDebug(MAIN) << "Room state cache saved to" << outRoomFile.fileName();
+    } else {
+        qCWarning(MAIN) << "Error opening" << outRoomFile.fileName()
+                        << ":" << outRoomFile.errorString();
+    }
+}
+
+void Connection::saveState() const
 {
     if (!d->cacheState)
         return;
 
     QElapsedTimer et; et.start();
 
-    QFileInfo stateFile {
-        toFile.isEmpty() ? stateCachePath() : toFile.toLocalFile()
-    };
-    if (!stateFile.dir().exists())
-        stateFile.dir().mkpath(".");
-
-    QFile outfile { stateFile.absoluteFilePath() };
-    if (!outfile.open(QFile::WriteOnly))
+    QFile outFile { stateCachePath() % "state.json" };
+    if (!outFile.open(QFile::WriteOnly))
     {
-        qCWarning(MAIN) << "Error opening" << stateFile.absoluteFilePath()
-                        << ":" << outfile.errorString();
+        qCWarning(MAIN) << "Error opening" << outFile.fileName()
+                        << ":" << outFile.errorString();
         qCWarning(MAIN) << "Caching the rooms state disabled";
         d->cacheState = false;
         return;
     }
 
-    QJsonObject rootObj;
+    QJsonObject rootObj {
+        { QStringLiteral("cache_version"), QJsonObject {
+            { QStringLiteral("major"), SyncData::cacheVersion().first },
+            { QStringLiteral("minor"), SyncData::cacheVersion().second }
+    }}};
     {
         QJsonObject rooms;
         QJsonObject inviteRooms;
         for (const auto* i : roomMap()) // Pass on rooms in Leave state
-        {
-            if (i->joinState() == JoinState::Invite)
-                inviteRooms.insert(i->id(), i->toJson());
-            else
-                rooms.insert(i->id(), i->toJson());
-            QElapsedTimer et1; et1.start();
-            QCoreApplication::processEvents();
-            if (et1.elapsed() > 1)
-                qCDebug(PROFILER) << "processEvents() borrowed" << et1;
-        }
+            (i->joinState() == JoinState::Invite ? inviteRooms : rooms)
+            .insert(i->id(), QJsonValue::Null);
 
         QJsonObject roomObj;
         if (!rooms.isEmpty())
@@ -1126,63 +1134,35 @@ void Connection::saveState(const QUrl &toFile) const
             QJsonObject {{ QStringLiteral("events"), accountDataEvents }});
     }
 
-    QJsonObject versionObj;
-    versionObj.insert("major", CACHE_VERSION_MAJOR);
-    versionObj.insert("minor", CACHE_VERSION_MINOR);
-    rootObj.insert("cache_version", versionObj);
-
     QJsonDocument json { rootObj };
     auto data = d->cacheToBinary ? json.toBinaryData() :
                                    json.toJson(QJsonDocument::Compact);
     qCDebug(PROFILER) << "Cache for" << userId() << "generated in" << et;
 
-    outfile.write(data.data(), data.size());
-    qCDebug(MAIN) << "State cache saved to" << outfile.fileName();
+    outFile.write(data.data(), data.size());
+    qCDebug(MAIN) << "State cache saved to" << outFile.fileName();
 }
 
-void Connection::loadState(const QUrl &fromFile)
+void Connection::loadState()
 {
     if (!d->cacheState)
         return;
 
     QElapsedTimer et; et.start();
-    QFile file {
-        fromFile.isEmpty() ? stateCachePath() : fromFile.toLocalFile()
-    };
-    if (!file.exists())
-    {
-        qCDebug(MAIN) << "No state cache file found";
-        return;
-    }
-    if(!file.open(QFile::ReadOnly))
-    {
-        qCWarning(MAIN) << "file " << file.fileName() << "failed to open for read";
-        return;
-    }
-    QByteArray data = file.readAll();
 
-    auto jsonDoc = d->cacheToBinary ? QJsonDocument::fromBinaryData(data) :
-                                      QJsonDocument::fromJson(data);
-    if (jsonDoc.isNull())
-    {
-        qCWarning(MAIN) << "Cache file broken, discarding";
+    SyncData sync { stateCachePath() % "state.json" };
+    if (sync.nextBatch().isEmpty()) // No token means no cache by definition
         return;
-    }
-    auto actualCacheVersionMajor =
-            jsonDoc.object()
-            .value("cache_version").toObject()
-            .value("major").toInt();
-    if (actualCacheVersionMajor < CACHE_VERSION_MAJOR)
-    {
-        qCWarning(MAIN)
-            << "Major version of the cache file is" << actualCacheVersionMajor
-            << "but" << CACHE_VERSION_MAJOR << "required; discarding the cache";
-        return;
-    }
 
-    SyncData sync;
-    sync.parseJson(jsonDoc);
-    onSyncSuccess(std::move(sync));
+    if (!sync.unresolvedRooms().isEmpty())
+    {
+        qCWarning(MAIN) << "State cache incomplete, discarding";
+        return;
+    }
+    // TODO: to handle load failures, instead of the above block:
+    // 1. Do initial sync on failed rooms without saving the nextBatch token
+    // 2. Do the sync across all rooms as normal
+    onSyncSuccess(std::move(sync), true);
     qCDebug(PROFILER) << "*** Cached state for" << userId() << "loaded in" << et;
 }
 
@@ -1190,8 +1170,7 @@ QString Connection::stateCachePath() const
 {
     auto safeUserId = userId();
     safeUserId.replace(':', '_');
-    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-            % '/' % safeUserId % "_state.json";
+    return cacheLocation(safeUserId);
 }
 
 bool Connection::cacheState() const
@@ -1205,6 +1184,20 @@ void Connection::setCacheState(bool newValue)
     {
         d->cacheState = newValue;
         emit cacheStateChanged();
+    }
+}
+
+bool QMatrixClient::Connection::lazyLoading() const
+{
+    return d->lazyLoading;
+}
+
+void QMatrixClient::Connection::setLazyLoading(bool newValue)
+{
+    if (d->lazyLoading != newValue)
+    {
+        d->lazyLoading = newValue;
+        emit lazyLoadingChanged();
     }
 }
 

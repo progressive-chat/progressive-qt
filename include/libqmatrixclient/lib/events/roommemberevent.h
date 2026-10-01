@@ -29,13 +29,10 @@ namespace QMatrixClient
             enum MembershipType : size_t { Invite = 0, Join, Knock, Leave, Ban,
                                            Undefined };
 
-            explicit MemberEventContent(MembershipType mt = MembershipType::Join)
+            explicit MemberEventContent(MembershipType mt = Join)
                 : membership(mt)
             { }
             explicit MemberEventContent(const QJsonObject& json);
-            explicit MemberEventContent(const QJsonValue& jv)
-                : MemberEventContent(jv.toObject())
-            { }
 
             MembershipType membership;
             bool isDirect = false;
@@ -60,11 +57,19 @@ namespace QMatrixClient
                 : StateEvent(typeId(), obj)
             { }
             RoomMemberEvent(MemberEventContent&& c)
-                : StateEvent(typeId(), matrixTypeId(), c.toJson())
+                : StateEvent(typeId(), matrixTypeId(), c)
             { }
 
-            // This is a special constructor enabling RoomMemberEvent to be
-            // a base class for more specific member events.
+            /// A special constructor to create unknown RoomMemberEvents
+            /**
+             * This is needed in order to use RoomMemberEvent as a "base event
+             * class" in cases like GetMembersByRoomJob when RoomMemberEvents
+             * (rather than RoomEvents or StateEvents) are resolved from JSON.
+             * For such cases loadEvent<> requires an underlying class to be
+             * constructible with unknownTypeId() instead of its genuine id.
+             * Don't use it directly.
+             * \sa GetMembersByRoomJob, loadEvent, unknownTypeId
+             */
             RoomMemberEvent(Type type, const QJsonObject& fullJson)
                 : StateEvent(type, fullJson)
             { }
@@ -84,6 +89,18 @@ namespace QMatrixClient
         private:
             REGISTER_ENUM(MembershipType)
     };
+
+    template <>
+    class EventFactory<RoomMemberEvent>
+    {
+        public:
+            static event_ptr_tt<RoomMemberEvent> make(const QJsonObject& json,
+                                                      const QString&)
+            {
+                return makeEvent<RoomMemberEvent>(json);
+            }
+    };
+
     REGISTER_EVENT_TYPE(RoomMemberEvent)
     DEFINE_EVENTTYPE_ALIAS(RoomMember, RoomMemberEvent)
 }  // namespace QMatrixClient

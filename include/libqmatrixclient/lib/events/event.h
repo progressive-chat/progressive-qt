@@ -209,7 +209,7 @@ namespace QMatrixClient
     inline auto registerEventType()
     {
         static const auto _ = setupFactory<EventT>();
-        return _;
+        return _; // Only to facilitate usage in static initialisation
     }
 
     // === Event ===
@@ -257,8 +257,18 @@ namespace QMatrixClient
                 return fromJson<T>(contentJson()[key]);
             }
 
+            friend QDebug operator<<(QDebug dbg, const Event& e)
+            {
+                QDebugStateSaver _dss { dbg };
+                dbg.noquote().nospace()
+                        << e.matrixType() << '(' << e.type() << "): ";
+                e.dumpTo(dbg);
+                return dbg;
+            }
+
             virtual bool isStateEvent() const { return false; }
             virtual bool isCallEvent() const { return false; }
+            virtual void dumpTo(QDebug dbg) const;
 
         protected:
             QJsonObject& editJson() { return _json; }

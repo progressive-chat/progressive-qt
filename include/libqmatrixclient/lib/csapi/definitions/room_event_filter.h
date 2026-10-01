@@ -19,15 +19,13 @@ namespace QMatrixClient
         QStringList notRooms;
         /// A list of room IDs to include. If this list is absent then all rooms are included.
         QStringList rooms;
-        /// If ``true``, includes only events with a ``url`` key in their content. If ``false``, excludes those events. Defaults to ``false``.
-        bool containsUrl;
+        /// If ``true``, includes only events with a ``url`` key in their content. If ``false``, excludes those events. If omitted, ``url`` key is not considered for filtering.
+        Omittable<bool> containsUrl;
     };
-
-    QJsonObject toJson(const RoomEventFilter& pod);
-
-    template <> struct FromJsonObject<RoomEventFilter>
+    template <> struct JsonObjectConverter<RoomEventFilter>
     {
-        RoomEventFilter operator()(const QJsonObject& jo) const;
+        static void dumpTo(QJsonObject& jo, const RoomEventFilter& pod);
+        static void fillFrom(const QJsonObject& jo, RoomEventFilter& pod);
     };
 
 } // namespace QMatrixClient
