@@ -45,7 +45,8 @@ android {
         qml/QtQuick/Window.2 \
         qml/QtQml/Models.2 \
         qml/QtGraphicalEffects \
-        qml/Qt/labs/settings
+        qml/Qt/labs/settings \
+        plugins/platforms/android/libqtforandroid.so
 }
 
 # Qt 5.6 + GCC 4.9 (desktop) / NDK r10e (Android) understand C++14 well
