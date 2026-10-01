@@ -23,7 +23,7 @@ jobs:
       - name: Install host deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y ant make perl python3 \
+          sudo apt-get install -y ant make perl python3 qtbase5-dev \
             libgl1-mesa-dev libfontconfig1-dev libfreetype6-dev \
             libdbus-1-dev libglib2.0-dev unzip curl
 
@@ -82,6 +82,14 @@ jobs:
           make install
           "$QT56_PREFIX/bin/qmake" -query QT_VERSION
 
+      - name: Build androiddeployqt (host tool, lives in skipped qttools)
+        run: |
+          g++ -o "$GITHUB_WORKSPACE/androiddeployqt" \
+            qt-everywhere-opensource-src-5.6.3/qttools/src/androiddeployqt/main.cpp \
+            -fPIC -DQT_NO_CAST_FROM_ASCII -DQT_NO_CAST_TO_ASCII -DQT_NO_EXCEPTIONS \
+            $(pkg-config --cflags Qt5Core) $(pkg-config --libs Qt5Core) -lpthread
+          "$GITHUB_WORKSPACE/androiddeployqt" --help 2>&1 | head -n 3 || true
+
       - name: Build app + APK
         run: |
           export JAVA_HOME="$JAVA_HOME_8_X64"
@@ -90,7 +98,7 @@ jobs:
           "$QT56_PREFIX/bin/qmake" "$GITHUB_WORKSPACE/progressive-qt.pro"
           make -j"$(nproc)"
           make install INSTALL_ROOT=android-build
-          "$QT56_PREFIX/bin/androiddeployqt" \
+          "$GITHUB_WORKSPACE/androiddeployqt" \
             --input android-libprogressive-chat.so-deployment-settings.json \
             --output android-build --deployment bundled --ant /usr/bin/ant
           find android-build -name "*.apk"
