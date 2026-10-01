@@ -16,10 +16,11 @@ jobs:
     env:
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
       ANDROID_NDK_ROOT: ${{ github.workspace }}/android-ndk-r10e
-      QT56_PREFIX: ${{ github.workspace }}/qt56-install
-      # Qt sources/builds live OUTSIDE the repo checkout: qmlimportscanner
-      # scans the repo (qml-root-path), and Qt's own test .qml files inside
-      # the checkout would drown it in noise.
+      # Qt install AND sources live OUTSIDE the repo checkout: androiddeployqt
+      # skips every resolved path under qml-root-path (the repo), so a Qt
+      # install inside the checkout makes ALL Qt QML modules get skipped
+      # and the APK ships zero QML files.
+      QT56_PREFIX: /tmp/qt56-install
       QT56_WORK: /tmp/qt56-work
     steps:
       - uses: actions/checkout@v4
