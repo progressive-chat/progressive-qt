@@ -43,6 +43,12 @@ jobs:
           yes | sdkmanager --licenses >/dev/null
           sdkmanager "platform-tools" "platforms;android-14" "platforms;android-16" "build-tools;24.0.3"
 
+      - name: Set up JDK 8 (Qt + ant builds)
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 8
+
       - name: Install NDK r10e
         run: |
           curl -o ndk.zip https://dl.google.com/android/repository/android-ndk-r10e-linux-x86_64.zip
@@ -75,12 +81,6 @@ jobs:
           make -j"$(nproc)"
           make install
           "$QT56_PREFIX/bin/qmake" -query QT_VERSION
-
-      - name: Set up JDK 8 for the ant build
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: 8
 
       - name: Build app + APK
         run: |
