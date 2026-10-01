@@ -104,7 +104,7 @@ jobs:
           "$QT56_PREFIX/bin/qmake" "$GITHUB_WORKSPACE/progressive-qt.pro"
           make -j"$(nproc)"
           make install INSTALL_ROOT=android-build
-          "$GITHUB_WORKSPACE/androiddeployqt" \
+          "$GITHUB_WORKSPACE/androiddeployqt" --verbose \
             --input android-libprogressive-chat.so-deployment-settings.json \
             --output android-build --deployment bundled --ant /usr/bin/ant
           find android-build -name "*.apk"
