@@ -7,6 +7,18 @@ LoginForm {
         serverField.accepted.connect(doLogin)
         usernameField.accepted.connect(doLogin)
         passwordField.accepted.connect(doLogin)
+        controller.connectionAdded.connect(function(conn) {
+            stackView.pop()
+            accountListView.currentConnection = conn
+        })
+        // FORK-ONLY: re-enable the button when login fails, otherwise it
+        // stays stuck on "Logging in..." forever.
+        controller.errorOccured.connect(resetLoginButton)
+    }
+
+    function resetLoginButton() {
+        loginButton.text = "LOGIN"
+        loginButton.enabled = true
     }
 
     function doLogin() {
@@ -21,10 +33,5 @@ LoginForm {
         loginButton.text = "Logging in..."
         loginButton.enabled = false
         controller.loginWithCredentials(serverField.text, usernameField.text, passwordField.text)
-
-        controller.connectionAdded.connect(function(conn) {
-            stackView.pop()
-            accountListView.currentConnection = conn
-        })
     }
 }

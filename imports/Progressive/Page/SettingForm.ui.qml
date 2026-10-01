@@ -185,7 +185,7 @@ Item {
                     }
                 }
 
-                onClicked: Util.pushToStack(stackView, roomPage)
+                onClicked: stackView.pop()
             }
 
             Repeater {

@@ -33,12 +33,21 @@ Item {
         return obj
     }
 
-    function pop() {
-        while (_stack.length > 1) {
-            var obj = _stack.pop()
-            obj.visible = false
+    function pop(item) {
+        // No argument: pop a single level (back navigation).
+        // Explicit null (see js/util.js): pop back to the initial item.
+        if (item === undefined) {
+            if (_stack.length > 1) {
+                var obj = _stack.pop()
+                obj.visible = false
+            }
+        } else {
+            while (_stack.length > 1) {
+                var popped = _stack.pop()
+                popped.visible = false
+            }
         }
-        currentItem = _stack.length > 0 ? _stack[0] : null
+        currentItem = _stack.length > 0 ? _stack[_stack.length - 1] : null
         if (currentItem)
             currentItem.visible = true
         depth = _stack.length
