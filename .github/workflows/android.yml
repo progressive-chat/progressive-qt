@@ -20,7 +20,7 @@ jobs:
       # Qt sources/builds live OUTSIDE the repo checkout: qmlimportscanner
       # scans the repo (qml-root-path), and Qt's own test .qml files inside
       # the checkout would drown it in noise.
-      QT56_WORK: ${{ runner.temp }}/qt56-work
+      QT56_WORK: /tmp/qt56-work
     steps:
       - uses: actions/checkout@v4
 
