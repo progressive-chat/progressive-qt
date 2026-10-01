@@ -44,8 +44,10 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-10" "platforms;android-14" "platforms;android-16" "build-tools;24.0.3"
 
       - name: Install legacy SDK Tools (Qt 5.6 androiddeployqt needs tools/android)
+        # NOTE: must be r25.2.x — newer tools dropped `android update project`,
+        # and ant templates (tools/ant/) were removed after 25.3.
         run: |
-          curl -o sdtools.zip https://dl.google.com/android/repository/sdk-tools-linux-4333796.zip
+          curl -o sdtools.zip https://dl.google.com/android/repository/tools_r25.2.5-linux.zip
           unzip -q sdtools.zip -d "$ANDROID_SDK_ROOT"
           test -x "$ANDROID_SDK_ROOT/tools/android"
 
