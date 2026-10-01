@@ -76,11 +76,20 @@ Notes:
   `Qt.labs.settings`, which 5.6 ships), CheckBox binding inversion,
   TextArea width loop, null `currentRoom` guard.
 
-## Android note
+## Android note (working, CI-proven)
 
-This host toolchain proves source compatibility with Qt 5.6. APKs are built
-on x86_64 CI (`.github/workflows/android.yml`): Qt 5.6.3 for Android
-(armeabi-v7a, API 14) + NDK r10e + SDK android-14, ant + JDK 8, then
-`androiddeployqt --deployment bundled`. A local APK build on aarch64 dev
-boxes is not supported (NDK r10e host tools are x86_64-only, no qemu).
-`android/AndroidManifest.xml` declares minSdk 9 / targetSdk 14.
+APKs build on x86_64 CI (`.github/workflows/android.yml`, green): Qt 5.6.3
+for Android (armeabi-v7a, NDK r10e GCC 4.9, android-9 sysroot) + SDK
+platforms android-10/14/16 + build-tools 24.0.3. Key ingredients:
+
+- SDK Tools **r25.2.5** (last version with `android update project` and
+  `tools/ant/` templates; newer tools dropped both).
+- JDK 17 for `sdkmanager`, JDK 8 for the Qt + ant builds (Qt's bundled
+  jar needs `-source 6`).
+- `androiddeployqt` lives in skipped `qttools` — build it on the host
+  with system Qt (`g++ main.cpp -lQt5Core`).
+- A local APK build on aarch64 dev boxes is not supported (NDK r10e host
+  tools are x86_64-only, no qemu).
+- Result: 9.6 MB debug APK with `lib/armeabi-v7a/libprogressive-chat.so`
+  plus Qt 5.6 Core/Gui/Network/Qml/Quick/Widgets.
+- `android/AndroidManifest.xml` declares minSdk 9 / targetSdk 14.
