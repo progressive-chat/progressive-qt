@@ -32,23 +32,10 @@ android {
     QT += androidextras
     # androiddeployqt (Qt 5.6) packages everything under android/.
     ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android
-    # Explicit QML modules to bundle: the qmlimportscanner pass cannot see
-    # our qrc-embedded sources reliably, so list every QtQuick module the
-    # QML uses (paths are relative to the Qt install, see androiddeployqt
-    # "deployment-dependencies"). Our own Progressive.* modules live in
-    # res.qrc and need no bundling; SortFilterProxyModel is C++-registered.
-    # Adding the platform plugin here ensures it's bundled (fixes 'no platform
-    # plugin' error). Other Qt libraries are still auto-detected by the scanner.
-    ANDROID_DEPLOYMENT_DEPENDENCIES += \
-        qml/QtQuick.2 \
-        qml/QtQml \
-        qml/QtQuick/Controls \
-        qml/QtQuick/Layouts \
-        qml/QtQuick/Window.2 \
-        qml/QtQml/Models.2 \
-        qml/QtGraphicalEffects \
-        qml/Qt/labs/settings \
-        plugins/platforms/android/libqtforandroid.so
+    # Let androiddeployqt auto-detect all Qt dependencies (QML imports, plugins, libs).
+    # The platform plugin (libqtforandroid.so) is auto-detected via the
+    # platform plugin's dependencies. No explicit ANDROID_DEPLOYMENT_DEPENDENCIES
+    # needed — explicit list REPLACES auto-detection (causing missing libs).
 }
 
 # Qt 5.6 + GCC 4.9 (desktop) / NDK r10e (Android) understand C++14 well
