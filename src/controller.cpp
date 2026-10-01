@@ -186,6 +186,14 @@ bool Controller::saveAccessToken(const AccountSettings& account,
 }
 
 void Controller::joinRoom(Connection* c, const QString& alias) {
+  // NOTE (Progressive Chat Qt, fork-only): upstream never guarded against a
+  // null connection (e.g. tapping + with no account). Refuse cleanly instead
+  // of crashing.
+  if (!c) {
+    emit errorOccured("Join Room Failed",
+                      "No active account — please log in first.");
+    return;
+  }
   JoinRoomJob* joinRoomJob = c->joinRoom(alias);
   joinRoomJob->connect(joinRoomJob, &JoinRoomJob::failure, [=] {
     emit errorOccured("Join Room Failed", joinRoomJob->errorString());
@@ -194,6 +202,11 @@ void Controller::joinRoom(Connection* c, const QString& alias) {
 
 void Controller::createRoom(Connection* c, const QString& name,
                             const QString& topic) {
+  if (!c) {
+    emit errorOccured("Create Room Failed",
+                      "No active account — please log in first.");
+    return;
+  }
   CreateRoomJob* createRoomJob =
       c->createRoom(Connection::PublishRoom, "", name, topic, QStringList());
   createRoomJob->connect(createRoomJob, &CreateRoomJob::failure, [=] {
@@ -202,6 +215,11 @@ void Controller::createRoom(Connection* c, const QString& name,
 }
 
 void Controller::createDirectChat(Connection* c, const QString& userID) {
+  if (!c) {
+    emit errorOccured("Create Direct Chat Failed",
+                      "No active account — please log in first.");
+    return;
+  }
   CreateRoomJob* createRoomJob = c->createDirectChat(userID);
   createRoomJob->connect(createRoomJob, &CreateRoomJob::failure, [=] {
     emit errorOccured("Create Direct Chat Failed",

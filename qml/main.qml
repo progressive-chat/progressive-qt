@@ -225,6 +225,9 @@ ApplicationWindow {
                         color:  "white"
                     }
 
+                    // FORK-ONLY: no account, no rooms (C++ guards too).
+                    enabled: currentConnection !== null
+
                     onClicked: addRoomMenu.popup()
 
                     Menu {

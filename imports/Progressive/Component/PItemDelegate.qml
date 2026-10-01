@@ -11,6 +11,7 @@ Item {
     property var contentItem
     property string text: ""
     property bool highlighted: false
+    property bool enabled: true
 
     signal clicked
 
@@ -60,7 +61,15 @@ Item {
 
         anchors.fill: parent
         hoverEnabled: true
+        enabled: root.enabled
 
         onClicked: root.clicked()
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: PPalette.background
+        opacity: 0.6
+        visible: !root.enabled
     }
 }
