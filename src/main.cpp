@@ -6,6 +6,11 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QStandardPaths>
+#ifdef Q_OS_ANDROID
+#include <QDateTime>
+#include <QFile>
+#include <QTextStream>
+#endif
 
 #include "accountlistmodel.h"
 #include "controller.h"
@@ -26,12 +31,47 @@
 
 using namespace QMatrixClient;
 
+#ifdef Q_OS_ANDROID
+namespace {
+// On-device startup log: /sdcard/progressive-chat.log (readable with any
+// file manager, no adb needed). Captures Qt/QML warnings plus explicit
+// stage markers so a silent native crash still leaves a trace.
+QString progressiveLogPath() {
+  const QString path =
+      QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+      QStringLiteral("/progressive-chat.log");
+  return path;
+}
+void progressiveLogRaw(const QString& line) {
+  QFile f(progressiveLogPath());
+  if (f.open(QIODevice::Append | QIODevice::Text)) {
+    QTextStream out(&f);
+    out << QDateTime::currentDateTime().toString(Qt::ISODate) << " " << line
+        << "\n";
+  }
+}
+void progressiveMessageHandler(QtMsgType, const QMessageLogContext&,
+                               const QString& msg) {
+  progressiveLogRaw(msg);
+  fprintf(stderr, "%s\n", msg.toLocal8Bit().constData());
+}
+}  // namespace
+#define PROGRESSIVE_STAGE(m) progressiveLogRaw(QStringLiteral("stage: ") + QStringLiteral(m))
+#else
+#define PROGRESSIVE_STAGE(m) ((void)0)
+#endif
+
 int main(int argc, char *argv[]) {
 #if defined(Q_OS_WIN)
   QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 #endif
 
   QApplication app(argc, argv);
+
+#ifdef Q_OS_ANDROID
+  qInstallMessageHandler(progressiveMessageHandler);
+#endif
+  PROGRESSIVE_STAGE("app created");
 
   app.setOrganizationName("Progressive Chat");
   app.setOrganizationDomain("progressive.chat");
@@ -69,7 +109,12 @@ int main(int argc, char *argv[]) {
   engine.addImageProvider(QLatin1String("mxc"), m_provider);
 
   engine.load(QUrl(QStringLiteral("qrc:/qml/main.qml")));
-  if (engine.rootObjects().isEmpty()) return -1;
+  PROGRESSIVE_STAGE("qml loaded");
+  if (engine.rootObjects().isEmpty()) {
+    PROGRESSIVE_STAGE("no root objects, exiting");
+    return -1;
+  }
 
+  PROGRESSIVE_STAGE("entering event loop");
   return app.exec();
 }
