@@ -17,6 +17,10 @@ jobs:
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
       ANDROID_NDK_ROOT: ${{ github.workspace }}/android-ndk-r10e
       QT56_PREFIX: ${{ github.workspace }}/qt56-install
+      # Qt sources/builds live OUTSIDE the repo checkout: qmlimportscanner
+      # scans the repo (qml-root-path), and Qt's own test .qml files inside
+      # the checkout would drown it in noise.
+      QT56_WORK: ${{ runner.temp }}/qt56-work
     steps:
       - uses: actions/checkout@v4
 
@@ -65,12 +69,14 @@ jobs:
 
       - name: Fetch Qt 5.6.3 sources
         run: |
+          mkdir -p "$QT56_WORK"
+          cd "$QT56_WORK"
           curl -o qt-5.6.3.tar.xz https://download.qt.io/archive/qt/5.6/5.6.3/single/qt-everywhere-opensource-src-5.6.3.tar.xz
           tar -xf qt-5.6.3.tar.xz
 
       - name: Build Qt 5.6.3 for Android (armeabi-v7a, API 14)
         run: |
-          cd qt-everywhere-opensource-src-5.6.3
+          cd "$QT56_WORK/qt-everywhere-opensource-src-5.6.3"
           ./configure -prefix "$QT56_PREFIX" \
             -release -opensource -confirm-license \
             -xplatform android-g++ \
@@ -93,7 +99,7 @@ jobs:
       - name: Build androiddeployqt (host tool, lives in skipped qttools)
         run: |
           g++ -o "$GITHUB_WORKSPACE/androiddeployqt" \
-            qt-everywhere-opensource-src-5.6.3/qttools/src/androiddeployqt/main.cpp \
+            "$QT56_WORK/qt-everywhere-opensource-src-5.6.3/qttools/src/androiddeployqt/main.cpp" \
             -fPIC -DQT_NO_CAST_FROM_ASCII -DQT_NO_CAST_TO_ASCII -DQT_NO_EXCEPTIONS \
             $(pkg-config --cflags Qt5Core) $(pkg-config --libs Qt5Core) -lpthread
           "$GITHUB_WORKSPACE/androiddeployqt" --help 2>&1 | head -n 3 || true
@@ -106,6 +112,12 @@ jobs:
           "$QT56_PREFIX/bin/qmake" "$GITHUB_WORKSPACE/progressive-qt.pro"
           make -j"$(nproc)"
           make install INSTALL_ROOT=android-build
+          echo "=== deployment-settings.json ==="
+          cat android-libprogressive-chat.so-deployment-settings.json
+          echo "=== manual qmlimportscanner run (expect our QtQuick.* modules resolved) ==="
+          "$QT56_PREFIX/bin/qmlimportscanner" -rootPath "$GITHUB_WORKSPACE/" \
+            -importPath "$QT56_PREFIX/qml" "$GITHUB_WORKSPACE/" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d), 'entries'); print([e.get('name') for e in d if e.get('path','').startswith('$QT56_PREFIX')][:12])"
           "$GITHUB_WORKSPACE/androiddeployqt" --verbose \
             --input android-libprogressive-chat.so-deployment-settings.json \
             --output android-build --deployment bundled --ant /usr/bin/ant
