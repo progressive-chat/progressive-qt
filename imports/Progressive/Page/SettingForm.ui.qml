@@ -9,6 +9,8 @@ import Progressive.Style 0.1
 import Progressive 0.1
 import Progressive.Setting 0.1
 
+import "qrc:/js/util.js" as Util
+
 Item {
     property alias listModel: accountSettingsListView.model
 
@@ -155,6 +157,33 @@ Item {
 
         Column {
             anchors.fill: parent
+
+            PItemDelegate {
+                width: parent.width
+                height: 56
+
+                id: backButton
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    spacing: 12
+
+                    MaterialIcon {
+                        icon: "\ue5c4"
+                        color: PPalette.accent
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+
+                        text: "Back"
+                        font.bold: true
+                    }
+                }
+
+                onClicked: Util.pushToStack(stackView, roomPage)
+            }
 
             Repeater {
                 model: ListModel {
