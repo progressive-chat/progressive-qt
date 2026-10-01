@@ -135,8 +135,9 @@ unix:!mac:!android {
 }
 
 android {
-    # No D-Bus / desktop notifications on Android 2.3-4.x; Controller
-    # falls back to in-app banners. See COMPAT/Qt56.md.
+    # No D-Bus / desktop notifications on Android 2.3-4.x; the stub manager
+    # above keeps the build green, in-app banners are the fallback.
+    SOURCES += src/notifications/managerandroid.cpp
 }
 
 win32 {
