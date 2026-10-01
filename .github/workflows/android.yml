@@ -27,11 +27,11 @@ jobs:
             libgl1-mesa-dev libfontconfig1-dev libfreetype6-dev \
             libdbus-1-dev libglib2.0-dev unzip curl
 
-      - name: Set up JDK 11 (SDK manager) and JDK 8 (ant build)
+      - name: Set up JDK 17 (SDK manager)
         uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: 11
+          java-version: 17
 
       - name: Install Android SDK packages
         run: |

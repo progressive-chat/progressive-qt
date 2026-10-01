@@ -78,7 +78,9 @@ Notes:
 
 ## Android note
 
-This host toolchain proves source compatibility with Qt 5.6. Producing an
-APK additionally needs the Android SDK + NDK (r10e era) with Qt 5.6.3 for
-Android (`android_armv7` toolchain file) — same sources, same patches.
-`android/AndroidManifest.xml` already declares minSdk 9 / targetSdk 14.
+This host toolchain proves source compatibility with Qt 5.6. APKs are built
+on x86_64 CI (`.github/workflows/android.yml`): Qt 5.6.3 for Android
+(armeabi-v7a, API 14) + NDK r10e + SDK android-14, ant + JDK 8, then
+`androiddeployqt --deployment bundled`. A local APK build on aarch64 dev
+boxes is not supported (NDK r10e host tools are x86_64-only, no qemu).
+`android/AndroidManifest.xml` declares minSdk 9 / targetSdk 14.
