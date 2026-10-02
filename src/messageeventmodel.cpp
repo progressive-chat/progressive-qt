@@ -45,6 +45,8 @@ QHash<int, QByteArray> MessageEventModel::roleNames() const {
   roles[UserMarkerRole] = "userMarker";
   // NOTE (Progressive Chat Qt, fork-only): backported reactions support.
   roles[ReactionRole] = "reaction";
+  // NOTE (Progressive Chat Qt, fork-only): reply preview (Jul 2019).
+  roles[ReplyRole] = "reply";
   return roles;
 }
 
@@ -361,6 +363,28 @@ QVariant MessageEventModel::data(const QModelIndex& idx, int role) const {
       variantList.append(QVariant::fromValue(user));
     }
     return variantList;
+  }
+
+  if (role == ReplyRole) {
+    // NOTE (Progressive Chat Qt, fork-only): reply preview ported from
+    // Jul 2019. Plain-text display (no cleanHTML helper on this stack).
+    if (isPending) return {};
+    const QString replyEventId = evt.contentJson()[QStringLiteral("m.relates_to")]
+                                     .toObject()[QStringLiteral("m.in_reply_to")]
+                                     .toObject()[QStringLiteral("event_id")]
+                                     .toString();
+    if (replyEventId.isEmpty()) return {};
+    const auto replyIt = m_currentRoom->findInTimeline(replyEventId);
+    if (replyIt == m_currentRoom->timelineEdge()) return {};
+    const auto& replyEvt = **replyIt;
+
+    return QVariantMap{
+        {QStringLiteral("eventId"), replyEventId},
+        {QStringLiteral("display"),
+         utils::removeReply(utils::eventToString(
+             utils::editedVersion(replyEvt, m_currentRoom), m_currentRoom))},
+        {QStringLiteral("author"),
+         QVariant::fromValue(m_currentRoom->user(replyEvt.senderId()))}};
   }
 
   if (role == ReactionRole) {

@@ -82,11 +82,56 @@ RowLayout {
                 }
             }
 
+            // FORK-ONLY: reply preview ported from Jul 2019 (click jumps
+            // to the replied-to event).
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: replyRow.implicitHeight + 6
+
+                visible: reply && reply.eventId !== ""
+
+                id: replyPreview
+
+                Row {
+                    id: replyRow
+
+                    anchors.fill: parent
+                    anchors.leftMargin: 4
+
+                    spacing: 6
+
+                    Rectangle {
+                        width: 3
+                        height: parent.height
+
+                        color: PPalette.accent
+                    }
+
+                    TimelineLabel {
+                        width: parent.width - 9
+
+                        text: "In reply to " + (reply && reply.author ? reply.author.displayName : "") + ": " + (reply ? reply.display : "")
+                        coloredBackground: highlighted
+                        foreground: "grey"
+                        font.pointSize: 8
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        var idx = messageEventModel.eventIDToIndex(reply.eventId)
+                        if (idx >= 0)
+                            messageListView.positionViewAtIndex(idx, ListView.Center)
+                    }
+                }
+            }
+
             TextEdit {
                 Layout.fillWidth: true
 
                 id: contentLabel
-
                 text: (highlighted  ? "<style>a{color: white;} .user-pill{color: white}</style>" : "<style>a{color: " + PPalette.accent + ";} .user-pill{color: " + PPalette.accent + "}</style>") + display
 
                 visible: isText

@@ -35,6 +35,8 @@ class MessageEventModel : public QAbstractListModel {
     EventResolvedTypeRole,
     // NOTE (Progressive Chat Qt, fork-only): backported reactions support.
     ReactionRole,
+    // NOTE (Progressive Chat Qt, fork-only): reply preview (Jul 2019).
+    ReplyRole,
   };
 
   explicit MessageEventModel(QObject* parent = nullptr);
