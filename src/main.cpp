@@ -26,6 +26,7 @@
 #include <QtPlugin>
 Q_IMPORT_PLUGIN(QMinimalIntegrationPlugin)
 Q_IMPORT_PLUGIN(QOffscreenIntegrationPlugin)
+Q_IMPORT_PLUGIN(QXcbIntegrationPlugin)
 Q_IMPORT_PLUGIN(QtQuick2Plugin)
 Q_IMPORT_PLUGIN(QtQuick2WindowPlugin)
 Q_IMPORT_PLUGIN(QtQuickControlsPlugin)

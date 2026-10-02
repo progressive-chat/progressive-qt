@@ -166,7 +166,7 @@ mac {
 #   COMPAT/gen-static-qml-qrc.sh <static-qt-prefix> <build-dir>
 static {
     DEFINES += PROGRESSIVE_STATIC_QT
-    QTPLUGIN += qminimal qoffscreen \
+    QTPLUGIN += qminimal qoffscreen qxcb \
         qtquick2plugin windowplugin qtquickcontrolsplugin \
         qquicklayoutsplugin modelsplugin qtgraphicaleffectsprivate \
         qmlsettingsplugin
