@@ -339,14 +339,21 @@ ApplicationWindow {
     PDialog {
         id: directChatDialog
 
-        title: "Input User ID"
+        title: "Start Direct Chat"
 
-        contentItem: AutoTextField {
-            id: directChatDialogTextField
-            placeholderText: "@bot:matrix.org"
+        maxWidth: 480
+
+        // FORK-ONLY: user directory browser ported from Dec 2019.
+        contentItem: UserDirectoryBrowser {
+            connection: currentConnection
+
+            onChatRequested: {
+                progressiveController.createDirectChat(currentConnection, userId)
+                directChatDialog.close()
+            }
         }
 
-        onAccepted: progressiveController.createDirectChat(currentConnection, directChatDialogTextField.text)
+        onAccepted: directChatDialog.close()
     }
 
     PDialog {

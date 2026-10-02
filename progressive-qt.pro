@@ -116,6 +116,7 @@ HEADERS += \
     src/spectralroom.h \
     src/userlistmodel.h \
     src/publicroomlistmodel.h \
+    src/userdirectorylistmodel.h \
     src/imageitem.h \
     src/accountlistmodel.h \
     src/spectraluser.h \
@@ -131,6 +132,7 @@ SOURCES += src/main.cpp \
     src/spectralroom.cpp \
     src/userlistmodel.cpp \
     src/publicroomlistmodel.cpp \
+    src/userdirectorylistmodel.cpp \
     src/imageitem.cpp \
     src/accountlistmodel.cpp \
     src/spectraluser.cpp \

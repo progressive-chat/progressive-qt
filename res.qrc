@@ -38,6 +38,7 @@
         <file>imports/Progressive/Page/SettingCategoryDelegate.qml</file>
         <file>imports/Progressive/Page/SettingAccountDelegate.qml</file>
         <file>imports/Progressive/Page/PublicRoomBrowser.qml</file>
+        <file>imports/Progressive/Page/UserDirectoryBrowser.qml</file>
         <file>imports/Progressive/Page/LoginForm.ui.qml</file>
         <file>imports/Progressive/Panel/qmldir</file>
         <file>imports/Progressive/Panel/RoomDrawer.qml</file>

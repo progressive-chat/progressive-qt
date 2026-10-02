@@ -4,3 +4,4 @@ Room 2.0 Room.qml
 Setting 2.0 Setting.qml
 SettingAccountDelegate 2.0 SettingAccountDelegate.qml
 PublicRoomBrowser 2.0 PublicRoomBrowser.qml
+UserDirectoryBrowser 2.0 UserDirectoryBrowser.qml
