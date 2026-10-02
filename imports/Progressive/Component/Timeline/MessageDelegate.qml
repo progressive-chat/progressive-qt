@@ -211,7 +211,7 @@ RowLayout {
                     id: timeLabel
 
                     visible: Math.abs(time - aboveTime) > 600000 || index == 0
-                    text: Qt.formatTime(time, "hh:mm")
+                    text: Qt.formatTime(time)
                     coloredBackground: highlighted
                     foreground: "grey"
                     font.pointSize: 8
