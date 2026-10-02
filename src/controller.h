@@ -71,6 +71,10 @@ class Controller : public QObject {
  signals:
   void busyChanged();
   void errorOccured(QString error, QString detail);
+  // FORK-ONLY: explicit login outcome so the UI can never be left
+  // saying "Logging in..." (upstream never fixed this dead end).
+  void loginSucceeded();
+  void loginFailed();
   void connectionAdded(Connection* conn);
   void connectionDropped(Connection* conn);
   void initiated();

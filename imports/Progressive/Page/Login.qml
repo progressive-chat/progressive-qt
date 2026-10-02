@@ -12,7 +12,10 @@ LoginForm {
             accountListView.currentConnection = conn
         })
         // FORK-ONLY: re-enable the button when login fails, otherwise it
-        // stays stuck on "Logging in..." forever.
+        // stays stuck on "Logging in..." forever. Explicit loginFailed/
+        // loginSucceeded signals make this independent of error dialogs
+        // and of errorOccured arriving before this page exists.
+        controller.loginFailed.connect(resetLoginButton)
         controller.errorOccured.connect(resetLoginButton)
     }
 
@@ -29,6 +32,14 @@ LoginForm {
             loginError.visible = true
             return
         }
+        if (!usernameField.text || !passwordField.text) {
+            loginError.text = "Please fill in username and password"
+            loginError.visible = true
+            return
+        }
+        // FORK-ONLY: guard against a retry being started while one is in
+        // flight (the old code allowed stacking logins).
+        if (!loginButton.enabled) return
 
         loginButton.text = "Logging in..."
         loginButton.enabled = false

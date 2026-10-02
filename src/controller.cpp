@@ -20,6 +20,11 @@
 #include <QtCore/QStandardPaths>
 #include <QtCore/QStringBuilder>
 #include <QtCore/QTimer>
+// FORK-ONLY: QSslSocket::supportsSsl() tells us at runtime whether this
+// Qt was built with OpenSSL (guarded for -no-openssl builds).
+#ifndef QT_NO_SSL
+#include <QtNetwork/QSslSocket>
+#endif
 #include <QtGui/QCloseEvent>
 #include <QtGui/QDesktopServices>
 #include <QtGui/QMovie>
@@ -67,15 +72,39 @@ void Controller::loginWithCredentials(QString serverAddr, QString user,
         qWarning() << "Couldn't save access token";
       account.sync();
       addConnection(m_connection);
+      emit loginSucceeded();
     });
     connect(m_connection, &Connection::networkError,
             [=](QString error, QString, int, int) {
               emit errorOccured("Network Error", error);
+              emit loginFailed();
             });
     connect(m_connection, &Connection::loginError,
             [=](QString error, QString) {
               emit errorOccured("Login Failed", error);
+              emit loginFailed();
             });
+    // FORK-ONLY: Qt built -no-openssl (as our Qt 5.6.3 is) cannot speak
+    // HTTPS at all; the request then never even reaches the network and
+    // the job retries silently for ~a minute. Detect that right away
+    // instead of leaving the login screen on "Logging in..." forever.
+    if (serverAddr.startsWith("https", Qt::CaseInsensitive) &&
+#ifndef QT_NO_SSL
+        !QSslSocket::supportsSsl()
+#else
+        true  // QT_NO_SSL: this build can never do https
+#endif
+    ) {
+      emit errorOccured(
+          "This build has no HTTPS support",
+          "Progressive Chat was built against a Qt without OpenSSL, so it "
+          "cannot connect to Matrix homeservers over https:// (got: "
+          "\"Protocol \\\"https\\\" is unknown\"). Rebuild Qt with OpenSSL "
+          "support, or use a plain http:// homeserver for testing.");
+      emit loginFailed();
+      m_connection->deleteLater();
+      return;
+    }
   }
 }
 
