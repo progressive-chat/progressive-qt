@@ -15,6 +15,10 @@ RowLayout {
     readonly property bool highlighted: !(sentByMe || eventType === "notice" )
     readonly property bool sentByMe: author === currentRoom.localUser
     readonly property bool isText: eventType === "notice" || eventType === "message"
+    // FORK-ONLY: failed-message resend/discard ported from Aug 2019.
+    // 0x05 == EventStatus.SendingFailed (hex literal like RoomPanelForm,
+    // so the headless harness needs no C++ type registration).
+    readonly property bool failed: marks === 0x05
 
     signal saveFileAs()
     signal openExternally()
@@ -170,6 +174,57 @@ RowLayout {
 
             ReactionDelegate {
                 Layout.fillWidth: true
+            }
+
+            // FORK-ONLY: resend/discard ported from Aug 2019 (Controls 1
+            // Label + MouseArea instead of Controls 2 hover links).
+            Row {
+                Layout.alignment: Qt.AlignRight
+
+                spacing: 8
+                visible: messageRow.failed
+
+                TimelineLabel {
+                    text: "Send failed:"
+                    coloredBackground: highlighted
+                    foreground: "grey"
+                    font.pointSize: 8
+                }
+
+                TimelineLabel {
+                    text: "Resend"
+                    coloredBackground: highlighted
+                    foreground: PPalette.accent
+                    font.pointSize: 8
+                    font.underline: true
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: currentRoom.retryMessage(eventId)
+                    }
+                }
+
+                TimelineLabel {
+                    text: "|"
+                    coloredBackground: highlighted
+                    foreground: "grey"
+                    font.pointSize: 8
+                }
+
+                TimelineLabel {
+                    text: "Discard"
+                    coloredBackground: highlighted
+                    foreground: PPalette.accent
+                    font.pointSize: 8
+                    font.underline: true
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: currentRoom.discardMessage(eventId)
+                    }
+                }
             }
         }
 
