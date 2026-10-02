@@ -137,6 +137,13 @@ Item {
                 Label {
                     text: "Released under GNU General Public License, version 3."
                 }
+                Text {
+                    text: "<a href=\"https://github.com/progressive-chat/progressive-qt\">github.com/progressive-chat/progressive-qt</a>"
+                    textFormat: Text.RichText
+                    linkColor: PPalette.accent
+
+                    onLinkActivated: Qt.openUrlExternally(link)
+                }
             }
         }
     }
