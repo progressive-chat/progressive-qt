@@ -31,7 +31,8 @@ class NetworkAccessManager::Private
 #endif
 };
 
-NetworkAccessManager::NetworkAccessManager(QObject* parent) : d(std::make_unique<Private>())
+NetworkAccessManager::NetworkAccessManager(QObject* parent)
+    : QNetworkAccessManager(parent), d(std::make_unique<Private>())
 { }
 
 #ifndef QT_NO_SSL

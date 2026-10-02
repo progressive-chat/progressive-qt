@@ -38,12 +38,15 @@ namespace QMatrixClient {
     using StateEventPtr = event_ptr_tt<StateEventBase>;
     using StateEvents = EventsArray<StateEventBase>;
 
+    template <>
+    inline bool is<StateEventBase>(const Event& e) { return e.isStateEvent(); }
+
     /**
      * A combination of event type and state key uniquely identifies a piece
      * of state in Matrix.
      * \sa https://matrix.org/docs/spec/client_server/unstable.html#types-of-room-events
      */
-    using StateEventKey = std::pair<QString, QString>;
+    using StateEventKey = QPair<QString, QString>;
 
     template <typename ContentT>
     struct Prev
@@ -88,6 +91,12 @@ namespace QMatrixClient {
             }
 
             const ContentT& content() const { return _content; }
+            template <typename VisitorT>
+            void editContent(VisitorT&& visitor)
+            {
+                visitor(_content);
+                editJson()[ContentKeyL] = _content.toJson();
+            }
             [[deprecated("Use prevContent instead")]]
             const ContentT* prev_content() const { return prevContent(); }
             const ContentT* prevContent() const
@@ -101,21 +110,12 @@ namespace QMatrixClient {
     };
 } // namespace QMatrixClient
 
-// NOTE (Progressive Chat Qt): Qt 5.6 has no qHash(std::pair), but
-// QHash<StateEventKey> (see room.cpp) needs one. StateEventKey is a
-// std::pair alias, so only the global namespace (associated via QString)
-// is visible to ADL at the QHash instantiation point.
-inline uint qHash(const QMatrixClient::StateEventKey& k, uint seed = 0)
-{ return qHash(k.first, seed) ^ qHash(k.second, seed); }
-
 namespace std {
     template <> struct hash<QMatrixClient::StateEventKey>
     {
         size_t operator()(const QMatrixClient::StateEventKey& k) const Q_DECL_NOEXCEPT
         {
-            // NOTE (Progressive Chat Qt): Qt 5.6 has no qHash(std::pair);
-            // combine the members (same distribution for our purposes).
-            return qHash(k.first) ^ qHash(k.second);
+            return qHash(k);
         }
     };
 }

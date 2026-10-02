@@ -1,5 +1,3 @@
-#include <utility>
-
 /******************************************************************************
  * Copyright (C) 2017 Kitsune Ral <kitsune-ral@users.sf.net>
  *
@@ -191,7 +189,7 @@ bool Avatar::Private::checkUrl(const QUrl& url) const
 }
 
 QString Avatar::Private::localFile() const {
-    static const auto cachePath = cacheLocation("avatars");
+    static const auto cachePath = cacheLocation(QStringLiteral("avatars"));
     return cachePath % _url.authority() % '_' % _url.fileName() % ".png";
 }
 

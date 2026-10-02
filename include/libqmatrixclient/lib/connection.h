@@ -21,13 +21,14 @@
 #include "csapi/create_room.h"
 #include "joinstate.h"
 #include "events/accountdataevents.h"
+#include "qt_connection_util.h"
 
 #include <QtCore/QObject>
 #include <QtCore/QUrl>
 #include <QtCore/QSize>
+#include <QtCore/QDir>
 
 #include <functional>
-#include <memory>
 
 namespace QMatrixClient
 {
@@ -48,26 +49,7 @@ namespace QMatrixClient
     class DownloadFileJob;
     class SendToDeviceJob;
     class SendMessageJob;
-
-    /** Create a single-shot connection that triggers on the signal and
-     * then self-disconnects
-     *
-     * Only supports DirectConnection type.
-     */
-    template <typename SenderT1, typename SignalT,
-              typename ReceiverT2, typename SlotT>
-    inline auto connectSingleShot(SenderT1* sender, SignalT signal,
-                                  ReceiverT2* receiver, SlotT slot)
-    {
-        QMetaObject::Connection connection;
-        connection = QObject::connect(sender, signal, receiver, slot,
-                                      Qt::DirectConnection);
-        Q_ASSERT(connection);
-        QObject::connect(sender, signal, receiver,
-                         [connection] { QObject::disconnect(connection); },
-                         Qt::DirectConnection);
-        return connection;
-    }
+    class LeaveRoomJob;
 
     class Connection;
 
@@ -113,14 +95,13 @@ namespace QMatrixClient
     class Connection: public QObject {
             Q_OBJECT
 
-            /** Whether or not the rooms state should be cached locally
-             * \sa loadState(), saveState()
-             */
             Q_PROPERTY(User* localUser READ user NOTIFY stateChanged)
             Q_PROPERTY(QString localUserId READ userId NOTIFY stateChanged)
             Q_PROPERTY(QString deviceId READ deviceId NOTIFY stateChanged)
             Q_PROPERTY(QByteArray accessToken READ accessToken NOTIFY stateChanged)
+            Q_PROPERTY(QString defaultRoomVersion READ defaultRoomVersion NOTIFY capabilitiesLoaded)
             Q_PROPERTY(QUrl homeserver READ homeserver WRITE setHomeserver NOTIFY homeserverChanged)
+            Q_PROPERTY(QString domain READ domain NOTIFY homeserverChanged)
             Q_PROPERTY(bool cacheState READ cacheState WRITE setCacheState NOTIFY cacheStateChanged)
             Q_PROPERTY(bool lazyLoading READ lazyLoading WRITE setLazyLoading NOTIFY lazyLoadingChanged)
 
@@ -235,10 +216,10 @@ namespace QMatrixClient
             QList<User*> directChatUsers(const Room* room) const;
 
             /** Check whether a particular user is in the ignore list */
-            bool isIgnored(const User* user) const;
+            Q_INVOKABLE bool isIgnored(const User* user) const;
 
             /** Get the whole list of ignored users */
-            IgnoredUsersList ignoredUsers() const;
+            Q_INVOKABLE IgnoredUsersList ignoredUsers() const;
 
             /** Add the user to the ignore list
              * The change signal is emitted synchronously, without waiting
@@ -246,21 +227,34 @@ namespace QMatrixClient
              *
              * \sa ignoredUsersListChanged
              */
-            void addToIgnoredUsers(const User* user);
+            Q_INVOKABLE void addToIgnoredUsers(const User* user);
 
-            /** Remove the user from the ignore list
-             * Similar to adding, the change signal is emitted synchronously.
+            /** Remove the user from the ignore list */
+            /** Similar to adding, the change signal is emitted synchronously.
              *
              * \sa ignoredUsersListChanged
              */
-            void removeFromIgnoredUsers(const User* user);
+            Q_INVOKABLE void removeFromIgnoredUsers(const User* user);
 
             /** Get the full list of users known to this account */
             QMap<QString, User*> users() const;
 
+            /** Get the base URL of the homeserver to connect to */
             QUrl homeserver() const;
+            /** Get the domain name used for ids/aliases on the server */
+            QString domain() const;
+            /** Find a room by its id and a mask of applicable states */
             Q_INVOKABLE Room* room(const QString& roomId,
-                 JoinStates states = JoinState::Invite|JoinState::Join) const;
+                JoinStates states = JoinState::Invite|JoinState::Join) const;
+            /** Find a room by its alias and a mask of applicable states */
+            Q_INVOKABLE Room* roomByAlias(const QString& roomAlias,
+                JoinStates states = JoinState::Invite|JoinState::Join) const;
+            /** Update the internal map of room aliases to IDs */
+            /// This is used for internal bookkeeping of rooms. Do NOT use
+            /// it to try change aliases, use Room::setAliases instead
+            void updateRoomAliases(const QString& roomId,
+                const QStringList& previousRoomAliases,
+                const QStringList& roomAliases);
             Q_INVOKABLE Room* invitation(const QString& roomId) const;
             Q_INVOKABLE User* user(const QString& userId);
             const User* user() const;
@@ -275,12 +269,41 @@ namespace QMatrixClient
             Q_INVOKABLE QString token() const;
             Q_INVOKABLE void getTurnServers();
 
+            struct SupportedRoomVersion
+            {
+                QString id;
+                QString status;
+
+                static const QString StableTag; // "stable", as of CS API 0.5
+                bool isStable() const { return status == StableTag; }
+
+                friend QDebug operator<<(QDebug dbg,
+                                         const SupportedRoomVersion& v)
+                {
+                    QDebugStateSaver _(dbg);
+                    return dbg.nospace() << v.id << '/' << v.status;
+                }
+            };
+
+            /// Get the room version recommended by the server
+            /** Only works after server capabilities have been loaded.
+             * \sa loadingCapabilities */
+            QString defaultRoomVersion() const;
+            /// Get the room version considered stable by the server
+            /** Only works after server capabilities have been loaded.
+             * \sa loadingCapabilities */
+            QStringList stableRoomVersions() const;
+            /// Get all room versions supported by the server
+            /** Only works after server capabilities have been loaded.
+             * \sa loadingCapabilities */
+            QVector<SupportedRoomVersion> availableRoomVersions() const;
+
             /**
              * Call this before first sync to load from previously saved file.
              *
              * \param fromFile A local path to read the state from. Uses QUrl
-             * to be QML-friendly. Empty parameter means using a path
-             * defined by stateCachePath().
+             * to be QML-friendly. Empty parameter means saving to the directory
+             * defined by stateCachePath() / stateCacheDir().
              */
             Q_INVOKABLE void loadState();
             /**
@@ -289,24 +312,34 @@ namespace QMatrixClient
              * loadState() on a next run of the client.
              *
              * \param toFile A local path to save the state to. Uses QUrl to be
-             * QML-friendly. Empty parameter means using a path defined by
-             * stateCachePath().
+             * QML-friendly. Empty parameter means saving to the directory
+             * defined by stateCachePath() / stateCacheDir().
              */
             Q_INVOKABLE void saveState() const;
 
             /// This method saves the current state of a single room.
             void saveRoomState(Room* r) const;
 
-            /**
-             * The default path to store the cached room state, defined as
-             * follows:
-             *     QStandardPaths::writeableLocation(QStandardPaths::CacheLocation) + _safeUserId + "_state.json"
-             * where `_safeUserId` is userId() with `:` (colon) replaced with
-             * `_` (underscore)
-             * /see loadState(), saveState()
-             */
+            /// Get the default directory path to save the room state to
+            /** \sa stateCacheDir */
             Q_INVOKABLE QString stateCachePath() const;
 
+            /// Get the default directory to save the room state to
+            /**
+             * This function returns the default directory to store the cached
+             * room state, defined as follows:
+             * \code
+             *     QStandardPaths::writeableLocation(QStandardPaths::CacheLocation) + _safeUserId + "_state.json"
+             * \endcode
+             * where `_safeUserId` is userId() with `:` (colon) replaced by
+             * `_` (underscore), as colons are reserved characters on Windows.
+             * \sa loadState, saveState, stateCachePath
+             */
+            QDir stateCacheDir() const;
+
+            /** Whether or not the rooms state should be cached locally
+             * \sa loadState(), saveState()
+             */
             bool cacheState() const;
             void setCacheState(bool newValue);
 
@@ -383,12 +416,19 @@ namespace QMatrixClient
                                  const QString& deviceId = {});
             void connectWithToken(const QString& userId, const QString& accessToken,
                                   const QString& deviceId);
+            /// Explicitly request capabilities from the server
+            void reloadCapabilities();
+
+            /// Find out if capabilites are still loading from the server
+            bool loadingCapabilities() const;
 
             /** @deprecated Use stopSync() instead */
             void disconnectFromServer() { stopSync(); }
             void logout();
 
             void sync(int timeout = -1);
+            void syncLoop(int timeout = -1);
+
             void stopSync();
             QString nextBatchToken() const;
 
@@ -402,10 +442,10 @@ namespace QMatrixClient
 
             // QIODevice* should already be open
             UploadContentJob* uploadContent(QIODevice* contentSource,
-                            const QString& filename = {},
-                            const QString& contentType = {}) const;
+                                const QString& filename = {},
+                                const QString& overrideContentType = {}) const;
             UploadContentJob* uploadFile(const QString& fileName,
-                                         const QString& contentType = {});
+                                const QString& overrideContentType = {});
             GetContentJob* getContent(const QString& mediaId) const;
             GetContentJob* getContent(const QUrl& url) const;
             // If localFilename is empty, a temporary file will be created
@@ -420,7 +460,7 @@ namespace QMatrixClient
             CreateRoomJob* createRoom(RoomVisibility visibility,
                 const QString& alias, const QString& name, const QString& topic,
                 QStringList invites, const QString& presetName = {},
-                bool isDirect = false,
+                const QString& roomVersion = {}, bool isDirect = false,
                 const QVector<CreateRoomJob::StateEvent>& initialState = {},
                 const QVector<CreateRoomJob::Invite3pid>& invite3pids = {},
                 const QJsonObject& creationContent = {});
@@ -494,14 +534,14 @@ namespace QMatrixClient
             SendMessageJob* sendMessage(const QString& roomId,
                                         const RoomEvent& event) const;
 
+            /** \deprecated Do not use this directly, use Room::leaveRoom() instead */
+            virtual LeaveRoomJob* leaveRoom( Room* room );
+
             // Old API that will be abolished any time soon. DO NOT USE.
 
             /** @deprecated Use callApi<PostReceiptJob>() or Room::postReceipt() instead */
             virtual PostReceiptJob* postReceipt(Room* room,
                                                 RoomEvent* event) const;
-            /** @deprecated Use callApi<LeaveRoomJob>() or Room::leaveRoom() instead */
-            virtual void leaveRoom( Room* room );
-
         signals:
             /**
              * @deprecated
@@ -517,6 +557,7 @@ namespace QMatrixClient
             void resolveError(QString error);
 
             void homeserverChanged(QUrl baseUrl);
+            void capabilitiesLoaded();
 
             void connected();
             void reconnected(); //< \deprecated Use connected() instead
@@ -670,25 +711,39 @@ namespace QMatrixClient
              */
             const ConnectionData* connectionData() const;
 
-            /**
-             * @brief Find a (possibly new) Room object for the specified id
-             * Use this method whenever you need to find a Room object in
-             * the local list of rooms. Note that this does not interact with
-             * the server; in particular, does not automatically create rooms
-             * on the server.
-             * @return a pointer to a Room object with the specified id; nullptr
-             * if roomId is empty or roomFactory() failed to create a Room object.
+            /** Get a Room object for the given id in the given state
+             *
+             * Use this method when you need a Room object in the local list
+             * of rooms, with the given state. Note that this does not interact
+             * with the server; in particular, does not automatically create
+             * rooms on the server. This call performs necessary join state
+             * transitions; e.g., if it finds a room in Invite but
+             * `joinState == JoinState::Join` then the Invite room object
+             * will be deleted and a new room object with Join state created.
+             * In contrast, switching between Join and Leave happens within
+             * the same object.
+             * \param roomId room id (not alias!)
+             * \param joinState desired (target) join state of the room; if
+             * omitted, any state will be found and return unchanged, or a
+             * new Join room created.
+             * @return a pointer to a Room object with the specified id and the
+             * specified state; nullptr if roomId is empty or if roomFactory()
+             * failed to create a Room object.
              */
-            Room* provideRoom(const QString& roomId, JoinState joinState);
+            Room* provideRoom(const QString& roomId,
+                              Omittable<JoinState> joinState = none);
 
             /**
              * Completes loading sync data.
              */
             void onSyncSuccess(SyncData &&data, bool fromCache = false);
 
+        protected slots:
+            void syncLoopIteration();
+
         private:
             class Private;
-            std::unique_ptr<Private> d;
+            QScopedPointer<Private> d;
 
             /**
              * A single entry for functions that need to check whether the

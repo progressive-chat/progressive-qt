@@ -1,4 +1,11 @@
 QT += network
+# NOTE (Progressive Chat Qt): multimedia is optional (minimal Qt builds,
+# e.g. without QtMultimedia). roommessageevent.cpp degrades gracefully.
+qtHaveModule(multimedia) {
+    QT += multimedia
+} else {
+    DEFINES += PROGRESSIVE_NO_LIBMULTIMEDIA
+}
 CONFIG += c++14 warn_on rtti_off create_prl object_parallel_to_source
 
 win32-msvc* {
@@ -12,19 +19,22 @@ INCLUDEPATH += $$SRCPATH
 
 HEADERS += \
     $$SRCPATH/connectiondata.h \
-    $$SRCPATH/syncdata.h \
     $$SRCPATH/connection.h \
     $$SRCPATH/eventitem.h \
     $$SRCPATH/room.h \
     $$SRCPATH/user.h \
     $$SRCPATH/avatar.h \
+    $$SRCPATH/syncdata.h \
     $$SRCPATH/util.h \
+    $$SRCPATH/qt_connection_util.h \
     $$SRCPATH/events/event.h \
     $$SRCPATH/events/roomevent.h \
     $$SRCPATH/events/stateevent.h \
     $$SRCPATH/events/eventcontent.h \
     $$SRCPATH/events/roommessageevent.h \
     $$SRCPATH/events/simplestateevents.h \
+    $$SRCPATH/events/roomcreateevent.h \
+    $$SRCPATH/events/roomtombstoneevent.h \
     $$SRCPATH/events/roommemberevent.h \
     $$SRCPATH/events/roomavatarevent.h \
     $$SRCPATH/events/typingevent.h \
@@ -56,17 +66,19 @@ HEADERS += \
 
 SOURCES += \
     $$SRCPATH/connectiondata.cpp \
-    $$SRCPATH/syncdata.cpp \
     $$SRCPATH/connection.cpp \
     $$SRCPATH/eventitem.cpp \
     $$SRCPATH/room.cpp \
     $$SRCPATH/user.cpp \
     $$SRCPATH/avatar.cpp \
+    $$SRCPATH/syncdata.cpp \
     $$SRCPATH/util.cpp \
     $$SRCPATH/events/event.cpp \
     $$SRCPATH/events/roomevent.cpp \
     $$SRCPATH/events/stateevent.cpp \
     $$SRCPATH/events/eventcontent.cpp \
+    $$SRCPATH/events/roomcreateevent.cpp \
+    $$SRCPATH/events/roomtombstoneevent.cpp \
     $$SRCPATH/events/roommessageevent.cpp \
     $$SRCPATH/events/roommemberevent.cpp \
     $$SRCPATH/events/typingevent.cpp \

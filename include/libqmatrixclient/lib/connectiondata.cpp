@@ -27,7 +27,7 @@ using namespace QMatrixClient;
 
 struct ConnectionData::Private
 {
-    explicit Private(const QUrl& url) : baseUrl(url) { }
+    explicit Private(QUrl url) : baseUrl(std::move(url)) { }
 
     QUrl baseUrl;
     QByteArray accessToken;
@@ -39,7 +39,7 @@ struct ConnectionData::Private
 };
 
 ConnectionData::ConnectionData(QUrl baseUrl)
-    : d(std::make_unique<Private>(baseUrl))
+    : d(std::make_unique<Private>(std::move(baseUrl)))
 { }
 
 ConnectionData::~ConnectionData() = default;
@@ -100,7 +100,7 @@ QString ConnectionData::lastEvent() const
 
 void ConnectionData::setLastEvent(QString identifier)
 {
-    d->lastEvent = identifier;
+    d->lastEvent = std::move(identifier);
 }
 
 QByteArray ConnectionData::generateTxnId() const

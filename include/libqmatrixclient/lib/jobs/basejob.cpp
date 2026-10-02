@@ -186,7 +186,7 @@ QUrl BaseJob::makeRequestUrl(QUrl baseUrl,
     if (!pathBase.endsWith('/') && !path.startsWith('/'))
         pathBase.push_back('/');
 
-    baseUrl.setPath( pathBase + path );
+    baseUrl.setPath(pathBase + path, QUrl::TolerantMode);
     baseUrl.setQuery(query);
     return baseUrl;
 }
@@ -325,9 +325,16 @@ void BaseJob::gotReply()
                 d->status.code = UserConsentRequiredError;
                 d->errorUrl = json.value("consent_uri"_ls).toString();
             }
-            else if (!json.isEmpty()) // Not localisable on the client side
-                setStatus(IncorrectRequestError,
-                          json.value("error"_ls).toString());
+            else if (errCode == "M_UNSUPPORTED_ROOM_VERSION" ||
+                     errCode == "M_INCOMPATIBLE_ROOM_VERSION")
+            {
+                d->status.code = UnsupportedRoomVersionError;
+                if (json.contains("room_version"))
+                    d->status.message =
+                        tr("Requested room version: %1")
+                        .arg(json.value("room_version").toString());
+            } else if (!json.isEmpty()) // Not localisable on the client side
+                setStatus(d->status.code, json.value("error"_ls).toString());
         }
     }
 
@@ -422,7 +429,7 @@ BaseJob::Status BaseJob::doCheckReply(QNetworkReply* reply) const
 BaseJob::Status BaseJob::parseReply(QNetworkReply* reply)
 {
     d->rawResponse = reply->readAll();
-    QJsonParseError error;
+    QJsonParseError error { 0, QJsonParseError::MissingObject };
     const auto& json = QJsonDocument::fromJson(d->rawResponse, &error);
     if( error.error == QJsonParseError::NoError )
         return parseJson(json);
@@ -568,6 +575,8 @@ QString BaseJob::statusCaption() const
             return tr("Network authentication required");
         case UserConsentRequiredError:
             return tr("User consent required");
+        case UnsupportedRoomVersionError:
+            return tr("The server does not support the needed room version");
         default:
             return tr("Request failed");
     }
@@ -590,10 +599,25 @@ QUrl BaseJob::errorUrl() const
 
 void BaseJob::setStatus(Status s)
 {
+    // The crash that led to this code has been reported in
+    // https://github.com/QMatrixClient/Quaternion/issues/566 - basically,
+    // when cleaning up childrent of a deleted Connection, there's a chance
+    // of pending jobs being abandoned, calling setStatus(Abandoned).
+    // There's nothing wrong with this; however, the safety check for
+    // cleartext access tokens below uses d->connection - which is a dangling
+    // pointer.
+    // To alleviate that, a stricter condition is applied, that for Abandoned
+    // and to-be-Abandoned jobs the status message will be disregarded entirely.
+    // For 0.6 we might rectify the situation by making d->connection
+    // a QPointer<> (and derive ConnectionData from QObject, respectively).
+    if (d->status.code == Abandoned || s.code == Abandoned)
+        s.message.clear();
+
     if (d->status == s)
         return;
 
-    if (!d->connection->accessToken().isEmpty())
+    if (!s.message.isEmpty()
+            && d->connection && !d->connection->accessToken().isEmpty())
         s.message.replace(d->connection->accessToken(), "(REDACTED)");
     if (!s.good())
         qCWarning(d->logCat) << this << "status" << s;
@@ -608,9 +632,8 @@ void BaseJob::setStatus(int code, QString message)
 
 void BaseJob::abandon()
 {
-    beforeAbandon(d->reply.data());
+    beforeAbandon(d->reply ? d->reply.data() : nullptr);
     setStatus(Abandoned);
-    this->disconnect();
     if (d->reply)
         d->reply->disconnect(this);
     emit finished(this);

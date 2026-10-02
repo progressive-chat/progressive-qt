@@ -33,6 +33,7 @@
 namespace QMatrixClient
 {
     class Event;
+    class Avatar;
     class SyncRoomData;
     class RoomMemberEvent;
     class Connection;
@@ -42,10 +43,17 @@ namespace QMatrixClient
     class SetRoomStateWithKeyJob;
     class RedactEventJob;
 
+    /** The data structure used to expose file transfer information to views
+     *
+     * This is specifically tuned to work with QML exposing all traits as
+     * Q_PROPERTY values.
+     */
     class FileTransferInfo
     {
             Q_GADGET
+            Q_PROPERTY(bool isUpload MEMBER isUpload CONSTANT)
             Q_PROPERTY(bool active READ active CONSTANT)
+            Q_PROPERTY(bool started READ started CONSTANT)
             Q_PROPERTY(bool completed READ completed CONSTANT)
             Q_PROPERTY(bool failed READ failed CONSTANT)
             Q_PROPERTY(int progress MEMBER progress CONSTANT)
@@ -53,16 +61,17 @@ namespace QMatrixClient
             Q_PROPERTY(QUrl localDir MEMBER localDir CONSTANT)
             Q_PROPERTY(QUrl localPath MEMBER localPath CONSTANT)
         public:
-            enum Status { None, Started, Completed, Failed };
+            enum Status { None, Started, Completed, Failed, Cancelled };
             Status status = None;
+            bool isUpload = false;
             int progress = 0;
             int total = -1;
             QUrl localDir { };
             QUrl localPath { };
 
-            bool active() const
-            { return status == Started || status == Completed; }
+            bool started() const { return status == Started; }
             bool completed() const { return status == Completed; }
+            bool active() const { return started() || completed(); }
             bool failed() const { return status == Failed; }
     };
 
@@ -72,10 +81,14 @@ namespace QMatrixClient
             Q_PROPERTY(Connection* connection READ connection CONSTANT)
             Q_PROPERTY(User* localUser READ localUser CONSTANT)
             Q_PROPERTY(QString id READ id CONSTANT)
+            Q_PROPERTY(QString version READ version NOTIFY baseStateLoaded)
+            Q_PROPERTY(bool isUnstable READ isUnstable NOTIFY stabilityUpdated)
+            Q_PROPERTY(QString predecessorId READ predecessorId NOTIFY baseStateLoaded)
+            Q_PROPERTY(QString successorId READ successorId NOTIFY upgraded)
             Q_PROPERTY(QString name READ name NOTIFY namesChanged)
             Q_PROPERTY(QStringList aliases READ aliases NOTIFY namesChanged)
             Q_PROPERTY(QString canonicalAlias READ canonicalAlias NOTIFY namesChanged)
-            Q_PROPERTY(QString displayName READ displayName NOTIFY namesChanged)
+            Q_PROPERTY(QString displayName READ displayName NOTIFY displaynameChanged)
             Q_PROPERTY(QString topic READ topic NOTIFY topicChanged)
             Q_PROPERTY(QString avatarMediaId READ avatarMediaId NOTIFY avatarChanged STORED false)
             Q_PROPERTY(QUrl avatarUrl READ avatarUrl NOTIFY avatarChanged)
@@ -95,6 +108,9 @@ namespace QMatrixClient
             Q_PROPERTY(QString readMarkerEventId READ readMarkerEventId WRITE markMessagesAsRead NOTIFY readMarkerMoved)
             Q_PROPERTY(bool hasUnreadMessages READ hasUnreadMessages NOTIFY unreadMessagesChanged)
             Q_PROPERTY(int unreadCount READ unreadCount NOTIFY unreadMessagesChanged)
+            Q_PROPERTY(int highlightCount READ highlightCount NOTIFY highlightCountChanged RESET resetHighlightCount)
+            Q_PROPERTY(int notificationCount READ notificationCount NOTIFY notificationCountChanged RESET resetNotificationCount)
+            Q_PROPERTY(bool allHistoryLoaded READ allHistoryLoaded NOTIFY addedMessages STORED false)
             Q_PROPERTY(QStringList tagNames READ tagNames NOTIFY tagsChanged)
             Q_PROPERTY(bool isFavourite READ isFavourite NOTIFY tagsChanged)
             Q_PROPERTY(bool isLowPriority READ isLowPriority NOTIFY tagsChanged)
@@ -117,7 +133,7 @@ namespace QMatrixClient
                 JoinStateChange = 0x20,
                 TagsChange = 0x40,
                 MembersChange = 0x80,
-                EncryptionOn = 0x100,
+                /* = 0x100, */
                 AccountDataChange = 0x200,
                 SummaryChange = 0x400,
                 ReadMarkerChange = 0x800,
@@ -135,6 +151,10 @@ namespace QMatrixClient
             Connection* connection() const;
             User* localUser() const;
             const QString& id() const;
+            QString version() const;
+            bool isUnstable() const;
+            QString predecessorId() const;
+            QString successorId() const;
             QString name() const;
             QStringList aliases() const;
             QString canonicalAlias() const;
@@ -142,6 +162,7 @@ namespace QMatrixClient
             QString topic() const;
             QString avatarMediaId() const;
             QUrl avatarUrl() const;
+            const Avatar& avatarObject() const;
             Q_INVOKABLE JoinState joinState() const;
             Q_INVOKABLE QList<User*> usersTyping() const;
             QList<User*> membersLeft() const;
@@ -208,6 +229,14 @@ namespace QMatrixClient
 
             const Timeline& messageEvents() const;
             const PendingEvents& pendingEvents() const;
+
+            /// Check whether all historical messages are already loaded
+            /**
+             * \return true if the "oldest" event in the timeline is
+             *         a room creation event and there's no further history
+             *         to load; false otherwise
+             */
+            bool allHistoryLoaded() const;
             /**
              * A convenience method returning the read marker to the position
              * before the "oldest" event; same as messageEvents().crend()
@@ -226,6 +255,8 @@ namespace QMatrixClient
 
             rev_iter_t findInTimeline(TimelineItem::index_t index) const;
             rev_iter_t findInTimeline(const QString& evtId) const;
+            PendingEvents::iterator findPendingEvent(const QString & txnId);
+            PendingEvents::const_iterator findPendingEvent(const QString & txnId) const;
 
             bool displayed() const;
             /// Mark the room as currently displayed to the user
@@ -334,17 +365,38 @@ namespace QMatrixClient
             /// Get the list of users this room is a direct chat with
             QList<User*> directChatUsers() const;
 
-            Q_INVOKABLE QUrl urlToThumbnail(const QString& eventId);
-            Q_INVOKABLE QUrl urlToDownload(const QString& eventId);
-            Q_INVOKABLE QString fileNameToDownload(const QString& eventId);
+            Q_INVOKABLE QUrl urlToThumbnail(const QString& eventId) const;
+            Q_INVOKABLE QUrl urlToDownload(const QString& eventId) const;
+
+            /// Get a file name for downloading for a given event id
+            /*!
+             * The event MUST be RoomMessageEvent and have content
+             * for downloading. \sa RoomMessageEvent::hasContent
+             */
+            Q_INVOKABLE QString fileNameToDownload(const QString& eventId) const;
+
+            /// Get information on file upload/download
+            /*!
+             * \param id uploads are identified by the corresponding event's
+             *           transactionId (because uploads are done before
+             *           the event is even sent), while downloads are using
+             *           the normal event id for identifier.
+             */
             Q_INVOKABLE FileTransferInfo fileTransferInfo(const QString& id) const;
+
+            /// Get the URL to the actual file source in a unified way
+            /*!
+             * For uploads it will return a URL to a local file; for downloads
+             * the URL will be taken from the corresponding room event.
+             */
+            Q_INVOKABLE QUrl fileSource(const QString& id) const;
 
             /** Pretty-prints plain text into HTML
              * As of now, it's exactly the same as QMatrixClient::prettyPrint();
              * in the future, it will also linkify room aliases, mxids etc.
              * using the room context.
              */
-            QString prettyPrint(const QString& plainText) const;
+            Q_INVOKABLE QString prettyPrint(const QString& plainText) const;
 
             MemberSorter memberSorter() const;
 
@@ -360,11 +412,17 @@ namespace QMatrixClient
             Q_INVOKABLE bool supportsCalls() const;
 
         public slots:
+            /** Check whether the room should be upgraded */
+            void checkVersion();
+
             QString postMessage(const QString& plainText, MessageEventType type);
             QString postPlainText(const QString& plainText);
             QString postHtmlMessage(const QString& plainText,
-                                    const QString& html, MessageEventType type);
+                        const QString& html,
+                        MessageEventType type = MessageEventType::Text);
             QString postHtmlText(const QString& plainText, const QString& html);
+            QString postFile(const QString& plainText, const QUrl& localPath,
+                             bool asGenericFile = false);
             /** Post a pre-created room message event
              *
              * Takes ownership of the event, deleting it once the matching one
@@ -378,7 +436,11 @@ namespace QMatrixClient
             void discardMessage(const QString& txnId);
             void setName(const QString& newName);
             void setCanonicalAlias(const QString& newAlias);
+            void setAliases(const QStringList& aliases);
             void setTopic(const QString& newTopic);
+
+            /// You shouldn't normally call this method; it's here for debugging
+            void refreshDisplayName();
 
             void getPreviousContent(int limit = 10);
 
@@ -402,19 +464,55 @@ namespace QMatrixClient
             /// Mark all messages in the room as read
             void markAllMessagesAsRead();
 
+            /// Whether the current user is allowed to upgrade the room
+            bool canSwitchVersions() const;
+
+            /// Switch the room's version (aka upgrade)
+            void switchVersion(QString newVersion);
+
         signals:
+            /// Initial set of state events has been loaded
+            /**
+             * The initial set is what comes from the initial sync for the room.
+             * This includes all basic things like RoomCreateEvent,
+             * RoomNameEvent, a (lazy-loaded, not full) set of RoomMemberEvents
+             * etc. This is a per-room reflection of Connection::loadedRoomState
+             * \sa Connection::loadedRoomState
+             */
+            void baseStateLoaded();
             void eventsHistoryJobChanged();
             void aboutToAddHistoricalMessages(RoomEventsRange events);
             void aboutToAddNewMessages(RoomEventsRange events);
             void addedMessages(int fromIndex, int toIndex);
-            void pendingEventAboutToAdd();
+            /// The event is about to be appended to the list of pending events
+            void pendingEventAboutToAdd(RoomEvent* event);
+            /// An event has been appended to the list of pending events
             void pendingEventAdded();
+            /// The remote echo has arrived with the sync and will be merged
+            /// with its local counterpart
+            /** NB: Requires a sync loop to be emitted */
             void pendingEventAboutToMerge(RoomEvent* serverEvent,
                                           int pendingEventIndex);
+            /// The remote and local copies of the event have been merged
+            /** NB: Requires a sync loop to be emitted */
             void pendingEventMerged();
+            /// An event will be removed from the list of pending events
             void pendingEventAboutToDiscard(int pendingEventIndex);
+            /// An event has just been removed from the list of pending events
             void pendingEventDiscarded();
+            /// The status of a pending event has changed
+            /** \sa PendingEventItem::deliveryStatus */
             void pendingEventChanged(int pendingEventIndex);
+            /// The server accepted the message
+            /** This is emitted when an event sending request has successfully
+             * completed. This does not mean that the event is already in the
+             * local timeline, only that the server has accepted it.
+             * \param txnId transaction id assigned by the client during sending
+             * \param eventId event id assigned by the server upon acceptance
+             * \sa postEvent, postPlainText, postMessage, postHtmlMessage
+             * \sa pendingEventMerged, aboutToAddNewMessages
+             */
+            void messageSent(QString txnId, QString eventId);
 
             /** A common signal for various kinds of changes in the room
              * Aside from all changes in the room state
@@ -453,8 +551,8 @@ namespace QMatrixClient
             void joinStateChanged(JoinState oldState, JoinState newState);
             void typingChanged();
 
-            void highlightCountChanged(Room* room);
-            void notificationCountChanged(Room* room);
+            void highlightCountChanged();
+            void notificationCountChanged();
 
             void displayedChanged(bool displayed);
             void firstDisplayedEventChanged();
@@ -479,6 +577,15 @@ namespace QMatrixClient
             void fileTransferCancelled(QString id);
 
             void callEvent(Room* room, const RoomEvent* event);
+
+            /// The room's version stability may have changed
+            void stabilityUpdated(QString recommendedDefault,
+                                  QStringList stableVersions);
+            /// This room has been upgraded and won't receive updates anymore
+            void upgraded(QString serverMessage, Room* successor);
+            /// An attempted room upgrade has failed
+            void upgradeFailed(QString errorMessage);
+
             /// The room is about to be deleted
             void beforeDestruction(Room*);
 

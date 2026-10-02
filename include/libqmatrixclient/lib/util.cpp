@@ -29,40 +29,57 @@ static const auto RegExpOptions =
     | QRegularExpression::UseUnicodePropertiesOption;
 
 // Converts all that looks like a URL into HTML links
-static void linkifyUrls(QString& htmlEscapedText)
+void QMatrixClient::linkifyUrls(QString& htmlEscapedText)
 {
+    // Note: outer parentheses are a part of C++ raw string delimiters, not of
+    // the regex (see http://en.cppreference.com/w/cpp/language/string_literal).
+    // Note2: the next-outer parentheses are \N in the replacement.
+
+    // generic url:
     // regexp is originally taken from Konsole (https://github.com/KDE/konsole)
-    // full url:
     // protocolname:// or www. followed by anything other than whitespaces,
     // <, >, ' or ", and ends before whitespaces, <, >, ', ", ], !, ), :,
     // comma or dot
-    // Note: outer parentheses are a part of C++ raw string delimiters, not of
-    // the regex (see http://en.cppreference.com/w/cpp/language/string_literal).
     static const QRegularExpression FullUrlRegExp(QStringLiteral(
-            R"(((www\.(?!\.)|[a-z][a-z0-9+.-]*://)(&(?![lg]t;)|[^&\s<>'"])+(&(?![lg]t;)|[^&!,.\s<>'"\]):])))"
+            R"(\b((www\.(?!\.)(?!(\w|\.|-)+@)|(https?|ftp|magnet)://)(&(?![lg]t;)|[^&\s<>'"])+(&(?![lg]t;)|[^&!,.\s<>'"\]):])))"
         ), RegExpOptions);
     // email address:
     // [word chars, dots or dashes]@[word chars, dots or dashes].[word chars]
     static const QRegularExpression EmailAddressRegExp(QStringLiteral(
-            R"((mailto:)?(\b(\w|\.|-)+@(\w|\.|-)+\.\w+\b))"
+            R"(\b(mailto:)?((\w|\.|-)+@(\w|\.|-)+\.\w+\b))"
+        ), RegExpOptions);
+    // An interim liberal implementation of
+    // https://matrix.org/docs/spec/appendices.html#identifier-grammar
+    static const QRegularExpression MxIdRegExp(QStringLiteral(
+            R"((^|[^<>/])([!#@][-a-z0-9_=/.]{1,252}:(?:\w|\.|-)+\.\w+(?::\d{1,5})?))"
         ), RegExpOptions);
 
-    // NOTE: htmlEscapedText is already HTML-escaped! No literal <,>,&
+    // NOTE: htmlEscapedText is already HTML-escaped! No literal <,>,&,"
 
     htmlEscapedText.replace(EmailAddressRegExp,
-                 QStringLiteral(R"(<a href="mailto:\2">\1\2</a>)"));
+                QStringLiteral(R"(<a href="mailto:\2">\1\2</a>)"));
     htmlEscapedText.replace(FullUrlRegExp,
-                 QStringLiteral(R"(<a href="\1">\1</a>)"));
+                QStringLiteral(R"(<a href="\1">\1</a>)"));
+    htmlEscapedText.replace(MxIdRegExp,
+                QStringLiteral(R"(\1<a href="https://matrix.to/#/\2">\2</a>)"));
+}
+
+QString QMatrixClient::sanitized(const QString& plainText)
+{
+    auto text = plainText;
+    text.remove(QChar(0x202e)); // RLO
+    text.remove(QChar(0x202d)); // LRO
+    text.remove(QChar(0xfffc)); // Object replacement character
+    return text;
 }
 
 QString QMatrixClient::prettyPrint(const QString& plainText)
 {
-    auto pt = QStringLiteral("<span style='white-space:pre-wrap'>") +
-            plainText.toHtmlEscaped() + QStringLiteral("</span>");
-    pt.replace('\n', QStringLiteral("<br/>"));
-
+    auto pt = plainText.toHtmlEscaped();
     linkifyUrls(pt);
-    return pt;
+    pt.replace('\n', QStringLiteral("<br/>"));
+    return QStringLiteral("<span style='white-space:pre-wrap'>") + pt
+            + QStringLiteral("</span>");
 }
 
 QString QMatrixClient::cacheLocation(const QString& dirName)
@@ -140,7 +157,7 @@ static_assert(!is_callable_v<fn_object<int>>, "Test non-function object");
 //              "Test returns<> with static member function");
 
 template <typename T>
-QString ft(T&&);
+QString ft(T&&) { return {}; }
 static_assert(std::is_same<fn_arg_t<decltype(ft<QString>)>, QString&&>(),
               "Test function templates");
 

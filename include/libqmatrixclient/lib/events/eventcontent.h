@@ -88,11 +88,13 @@ namespace QMatrixClient
         class FileInfo
         {
             public:
-                explicit FileInfo(const QUrl& u, int payloadSize = -1,
+                explicit FileInfo(const QUrl& u, qint64 payloadSize = -1,
                                   const QMimeType& mimeType = {},
                                   const QString& originalFilename = {});
                 FileInfo(const QUrl& u, const QJsonObject& infoJson,
                          const QString& originalFilename = {});
+
+                bool isValid() const;
 
                 void fillInfoJson(QJsonObject* infoJson) const;
 
@@ -109,7 +111,7 @@ namespace QMatrixClient
                 QJsonObject originalInfoJson;
                 QMimeType mimeType;
                 QUrl url;
-                int payloadSize;
+                qint64 payloadSize;
                 QString originalName;
         };
 
@@ -127,9 +129,10 @@ namespace QMatrixClient
         class ImageInfo : public FileInfo
         {
             public:
-                explicit ImageInfo(const QUrl& u, int fileSize = -1,
+                explicit ImageInfo(const QUrl& u, qint64 fileSize = -1,
                                    QMimeType mimeType = {},
-                                   const QSize& imageSize = {});
+                                   const QSize& imageSize = {},
+                                   const QString& originalFilename = {});
                 ImageInfo(const QUrl& u, const QJsonObject& infoJson,
                           const QString& originalFilename = {});
 
@@ -149,10 +152,10 @@ namespace QMatrixClient
         class Thumbnail : public ImageInfo
         {
             public:
+                Thumbnail() : ImageInfo(QUrl()) { } // To allow empty thumbnails
                 Thumbnail(const QJsonObject& infoJson);
-                Thumbnail(const ImageInfo& info)
-                    : ImageInfo(info)
-                { }
+                Thumbnail(const ImageInfo& info) : ImageInfo(info) { }
+                using ImageInfo::ImageInfo;
 
                 /**
                  * Writes thumbnail information to "thumbnail_info" subobject
@@ -167,6 +170,7 @@ namespace QMatrixClient
                 explicit TypedBase(const QJsonObject& o = {}) : Base(o) { }
                 virtual QMimeType type() const = 0;
                 virtual const FileInfo* fileInfo() const { return nullptr; }
+                virtual FileInfo* fileInfo() { return nullptr; }
                 virtual const Thumbnail* thumbnailInfo() const { return nullptr; }
         };
 
@@ -184,9 +188,7 @@ namespace QMatrixClient
         class UrlBasedContent : public TypedBase, public InfoT
         {
             public:
-                UrlBasedContent(QUrl url, InfoT&& info, QString filename = {})
-                    : InfoT(url, std::forward<InfoT>(info), filename)
-                { }
+                using InfoT::InfoT;
                 explicit UrlBasedContent(const QJsonObject& json)
                     : TypedBase(json)
                     , InfoT(json["url"].toString(), json["info"].toObject(),
@@ -198,6 +200,7 @@ namespace QMatrixClient
 
                 QMimeType type() const override { return InfoT::mimeType; }
                 const FileInfo* fileInfo() const override { return this; }
+                FileInfo* fileInfo() override { return this; }
 
             protected:
                 void fillJson(QJsonObject* json) const override
@@ -214,7 +217,7 @@ namespace QMatrixClient
         class UrlWithThumbnailContent : public UrlBasedContent<InfoT>
         {
             public:
-                // TODO: POD constructor
+                using UrlBasedContent<InfoT>::UrlBasedContent;
                 explicit UrlWithThumbnailContent(const QJsonObject& json)
                     : UrlBasedContent<InfoT>(json)
                     , thumbnail(InfoT::originalInfoJson)

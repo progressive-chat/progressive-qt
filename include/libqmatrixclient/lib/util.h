@@ -18,8 +18,9 @@
 
 #pragma once
 
-#include <QtCore/QPointer>
-#if (QT_VERSION < QT_VERSION_CHECK(5, 5, 0))
+#include <QtCore/QLatin1String>
+
+#if QT_VERSION < QT_VERSION_CHECK(5, 5, 0)
 #include <QtCore/QMetaEnum>
 #include <QtCore/QDebug>
 #endif
@@ -27,7 +28,7 @@
 #include <functional>
 #include <memory>
 
-#if __cplusplus >= 201703L
+#if __has_cpp_attribute(fallthrough)
 #define FALLTHROUGH [[fallthrough]]
 #elif __has_cpp_attribute(clang::fallthrough)
 #define FALLTHROUGH [[clang::fallthrough]]
@@ -49,6 +50,14 @@ Q_DECL_CONSTEXPR typename std::add_const<T>::type &qAsConst(T &t) Q_DECL_NOTHROW
 // prevent rvalue arguments:
 template <typename T>
 static void qAsConst(const T &&) Q_DECL_EQ_DELETE;
+#endif
+
+// MSVC 2015 and older GCC's don't handle initialisation from initializer lists
+// right in the absense of a constructor; MSVC 2015, notably, fails with
+// "error C2440: 'return': cannot convert from 'initializer list' to '<type>'"
+#if (defined(_MSC_VER) && _MSC_VER < 1910) || \
+    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ <= 4)
+#  define BROKEN_INITIALIZER_LISTS
 #endif
 
 namespace QMatrixClient
@@ -102,9 +111,31 @@ namespace QMatrixClient
             }
             Omittable<T>& operator=(value_type&& val)
             {
+                // For some reason GCC complains about -Wmaybe-uninitialized
+                // in the context of using Omittable<bool> with converters.h;
+                // though the logic looks very much benign (GCC bug???)
                 _value = std::move(val);
                 _omitted = false;
                 return *this;
+            }
+
+            bool operator==(const value_type& rhs) const
+            {
+                return !omitted() && value() == rhs;
+            }
+            friend bool operator==(const value_type& lhs,
+                                   const Omittable<value_type>& rhs)
+            {
+                return rhs == lhs;
+            }
+            bool operator!=(const value_type& rhs) const
+            {
+                return !operator==(rhs);
+            }
+            friend bool operator!=(const value_type& lhs,
+                                   const Omittable<value_type>& rhs)
+            {
+                return !(rhs == lhs);
             }
 
             bool omitted() const { return _omitted; }
@@ -136,7 +167,6 @@ namespace QMatrixClient
             }
             value_type&& release() { _omitted = true; return std::move(_value); }
 
-            operator value_type&() & { return editValue(); }
             const value_type* operator->() const & { return &value(); }
             value_type* operator->() & { return &editValue(); }
             const value_type& operator*() const & { return value(); }
@@ -166,6 +196,7 @@ namespace QMatrixClient
         static constexpr auto is_callable = true;
         using return_type = ReturnT;
         using arg_types = std::tuple<ArgTs...>;
+        using function_type = std::function<ReturnT(ArgTs...)>;
         static constexpr auto arg_number = std::tuple_size<arg_types>::value;
     };
 
@@ -265,35 +296,16 @@ namespace QMatrixClient
         return std::make_pair(last, sLast);
     }
 
-    /** A guard pointer that disconnects an interested object upon destruction
-     * It's almost QPointer<> except that you have to initialise it with one
-     * more additional parameter - a pointer to a QObject that will be
-     * disconnected from signals of the underlying pointer upon the guard's
-     * destruction.
+    /** Convert what looks like a URL or a Matrix ID to an HTML hyperlink */
+    void linkifyUrls(QString& htmlEscapedText);
+
+    /** Sanitize the text before showing in HTML
+     * This does toHtmlEscaped() and removes Unicode BiDi marks.
      */
-    template <typename T>
-    class ConnectionsGuard : public QPointer<T>
-    {
-        public:
-            ConnectionsGuard(T* publisher, QObject* subscriber)
-                : QPointer<T>(publisher), subscriber(subscriber)
-            { }
-            ~ConnectionsGuard()
-            {
-                if (*this)
-                    (*this)->disconnect(subscriber);
-            }
-            ConnectionsGuard(ConnectionsGuard&&) = default;
-            ConnectionsGuard& operator=(ConnectionsGuard&&) = default;
-            Q_DISABLE_COPY(ConnectionsGuard)
-            using QPointer<T>::operator=;
+    QString sanitized(const QString& plainText);
 
-        private:
-            QObject* subscriber;
-    };
-
-    /** Pretty-prints plain text into HTML
-     * This includes HTML escaping of <,>,",& and URLs linkification.
+    /** Pretty-print plain text into HTML
+     * This includes HTML escaping of <,>,",& and calling linkifyUrls()
      */
     QString prettyPrint(const QString& plainText);
 

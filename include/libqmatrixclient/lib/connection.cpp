@@ -24,6 +24,7 @@
 #include "room.h"
 #include "settings.h"
 #include "csapi/login.h"
+#include "csapi/capabilities.h"
 #include "csapi/logout.h"
 #include "csapi/receipts.h"
 #include "csapi/leaving.h"
@@ -43,6 +44,7 @@
 #include <QtCore/QStringBuilder>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QMimeDatabase>
 #include <QtCore/QCoreApplication>
 
 using namespace QMatrixClient;
@@ -71,23 +73,33 @@ class Connection::Private
             : data(move(connection))
         { }
         Q_DISABLE_COPY(Private)
-        Private(Private&&) = delete;
-        Private operator=(Private&&) = delete;
+        DISABLE_MOVE(Private)
 
         Connection* q = nullptr;
         std::unique_ptr<ConnectionData> data;
         // A complex key below is a pair of room name and whether its
         // state is Invited. The spec mandates to keep Invited room state
-        // separately so we should, e.g., keep objects for Invite and
-        // Leave state of the same room.
+        // separately; specifically, we should keep objects for Invite and
+        // Leave state of the same room if the two happen to co-exist.
         QHash<QPair<QString, bool>, Room*> roomMap;
+        // Mapping from aliases to room ids, as per the last sync
+        QHash<QString, QString> roomAliasMap;
         QVector<QString> roomIdsToForget;
         QVector<Room*> firstTimeRooms;
+        QVector<QString> pendingStateRoomIds;
         QMap<QString, User*> userMap;
         DirectChatsMap directChats;
         DirectChatUsersMap directChatUsers;
+        // The below two variables track local changes between sync completions.
+        // See also: https://github.com/QMatrixClient/libqmatrixclient/wiki/Handling-direct-chat-events
+        DirectChatsMap dcLocalAdditions;
+        DirectChatsMap dcLocalRemovals;
         std::unordered_map<QString, EventPtr> accountData;
         QString userId;
+        int syncLoopTimeout = -1;
+
+        GetCapabilitiesJob* capabilitiesJob = nullptr;
+        GetCapabilitiesJob::Capabilities capabilities;
 
         SyncJob* syncJob = nullptr;
 
@@ -98,8 +110,6 @@ class Connection::Private
 
         void connectWithToken(const QString& user, const QString& accessToken,
                               const QString& deviceId);
-        void broadcastDirectChatUpdates(const DirectChatsMap& additions,
-                                        const DirectChatsMap& removals);
 
         template <typename EventT>
         EventT* unpackAccountData() const
@@ -124,11 +134,15 @@ class Connection::Private
             packAndSendAccountData(
                         makeEvent<EventT>(std::forward<ContentT>(content)));
         }
+        QString topLevelStatePath() const
+        {
+            return q->stateCacheDir().filePath("state.json");
+        }
 };
 
 Connection::Connection(const QUrl& server, QObject* parent)
     : QObject(parent)
-    , d(std::make_unique<Private>(std::make_unique<ConnectionData>(server)))
+    , d(new Private(std::make_unique<ConnectionData>(server)))
 {
     d->q = this; // All d initialization should occur before this line
 }
@@ -228,12 +242,49 @@ void Connection::doConnectToServer(const QString& user, const QString& password,
         });
 }
 
+void Connection::syncLoopIteration()
+{
+    sync(d->syncLoopTimeout);
+}
+
 void Connection::connectWithToken(const QString& userId,
                                   const QString& accessToken,
                                   const QString& deviceId)
 {
     checkAndConnect(userId,
         [=] { d->connectWithToken(userId, accessToken, deviceId); });
+}
+
+void Connection::reloadCapabilities()
+{
+    d->capabilitiesJob = callApi<GetCapabilitiesJob>(BackgroundRequest);
+    connect(d->capabilitiesJob, &BaseJob::finished, this, [this] {
+        if (d->capabilitiesJob->error() == BaseJob::Success)
+            d->capabilities = d->capabilitiesJob->capabilities();
+        else if (d->capabilitiesJob->error() == BaseJob::IncorrectRequestError)
+            qCDebug(MAIN) << "Server doesn't support /capabilities";
+
+        if (d->capabilities.roomVersions.omitted())
+        {
+            qCWarning(MAIN) << "Pinning supported room version to 1";
+            d->capabilities.roomVersions = { "1", {{ "1", "stable" }} };
+        } else {
+            qCDebug(MAIN) << "Room versions:"
+                << defaultRoomVersion() << "is default, full list:"
+                << availableRoomVersions();
+        }
+        Q_ASSERT(!d->capabilities.roomVersions.omitted());
+        emit capabilitiesLoaded();
+        for (auto* r: d->roomMap)
+            r->checkVersion();
+    });
+}
+
+bool Connection::loadingCapabilities() const
+{
+    // (Ab)use the fact that room versions cannot be omitted after
+    // the capabilities have been loaded (see reloadCapabilities() above).
+    return d->capabilities.roomVersions.omitted();
 }
 
 void Connection::Private::connectWithToken(const QString& user,
@@ -244,11 +295,12 @@ void Connection::Private::connectWithToken(const QString& user,
     q->user(); // Creates a User object for the local user
     data->setToken(accessToken.toLatin1());
     data->setDeviceId(deviceId);
+    q->setObjectName(userId % '/' % deviceId);
     qCDebug(MAIN) << "Using server" << data->baseUrl().toDisplayString()
                   << "by user" << userId << "from device" << deviceId;
     emit q->stateChanged();
     emit q->connected();
-
+    q->reloadCapabilities();
 }
 
 void Connection::checkAndConnect(const QString& userId,
@@ -275,11 +327,14 @@ void Connection::checkAndConnect(const QString& userId,
 void Connection::logout()
 {
     auto job = callApi<LogoutJob>();
-    connect( job, &LogoutJob::success, this, [this] {
-        stopSync();
-        d->data->setToken({});
-        emit stateChanged();
-        emit loggedOut();
+    connect( job, &LogoutJob::finished, this, [job,this] {
+        if (job->status().good() || job->error() == BaseJob::ContentAccessError)
+        {
+            stopSync();
+            d->data->setToken({});
+            emit stateChanged();
+            emit loggedOut();
+        }
     });
 }
 
@@ -317,6 +372,27 @@ void Connection::sync(int timeout)
     });
 }
 
+void Connection::syncLoop(int timeout)
+{
+    d->syncLoopTimeout = timeout;
+    connect(this, &Connection::syncDone, this, &Connection::syncLoopIteration);
+    syncLoopIteration(); // initial sync to start the loop
+}
+
+QJsonObject toJson(const Connection::DirectChatsMap& directChats)
+{
+    QJsonObject json;
+    for (auto it = directChats.begin(); it != directChats.end();)
+    {
+        QJsonArray roomIds;
+        const auto* user = it.key();
+        for (; it != directChats.end() && it.key() == user; ++it)
+            roomIds.append(*it);
+        json.insert(user->id(), roomIds);
+    }
+    return json;
+}
+
 void Connection::onSyncSuccess(SyncData &&data, bool fromCache) {
     d->data->setLastEvent(data.nextBatch());
     for (auto&& roomData: data.takeRoomData())
@@ -338,74 +414,112 @@ void Connection::onSyncSuccess(SyncData &&data, bool fromCache) {
         }
         if ( auto* r = provideRoom(roomData.roomId, roomData.joinState) )
         {
+            d->pendingStateRoomIds.removeOne(roomData.roomId);
             r->updateData(std::move(roomData), fromCache);
             if (d->firstTimeRooms.removeOne(r))
+            {
                 emit loadedRoomState(r);
+                if (!d->capabilities.roomVersions.omitted())
+                    r->checkVersion();
+                // Otherwise, the version will be checked in reloadCapabilities()
+            }
         }
+        // Let UI update itself after updating each room
         QCoreApplication::processEvents();
     }
-    for (auto&& accountEvent: data.takeAccountData())
+    // After running this loop, the account data events not saved in
+    // d->accountData (see the end of the loop body) are auto-cleaned away
+    for (auto& eventPtr : data.takeAccountData())
     {
-        if (is<DirectChatEvent>(*accountEvent))
-        {
-            const auto usersToDCs = ptrCast<DirectChatEvent>(move(accountEvent))
-                                        ->usersToDirectChats();
-            DirectChatsMap removals =
-                erase_if(d->directChats, [&usersToDCs] (auto it) {
-                    return !usersToDCs.contains(it.key()->id(), it.value());
-                });
-            erase_if(d->directChatUsers, [&usersToDCs] (auto it) {
-                return !usersToDCs.contains(it.value()->id(), it.key());
-            });
-            if (MAIN().isDebugEnabled())
-                for (auto it = removals.begin(); it != removals.end(); ++it)
-                    qCDebug(MAIN) << it.value()
-                        << "is no more a direct chat with" << it.key()->id();
+        visit(*eventPtr,
+              [this](const DirectChatEvent& dce) {
+                  // See https://github.com/QMatrixClient/libqmatrixclient/wiki/Handling-direct-chat-events
+                  const auto& usersToDCs = dce.usersToDirectChats();
+                  DirectChatsMap remoteRemovals =
+                      erase_if(d->directChats, [&usersToDCs, this](auto it) {
+                          return !(usersToDCs.contains(it.key()->id(), it.value())
+                                   || d->dcLocalAdditions.contains(it.key(),
+                                                                   it.value()));
+                      });
+                  erase_if(d->directChatUsers, [&remoteRemovals](auto it) {
+                      return remoteRemovals.contains(it.value(), it.key());
+                  });
+                  // Remove from dcLocalRemovals what the server already has.
+                  erase_if(d->dcLocalRemovals, [&remoteRemovals](auto it) {
+                      return remoteRemovals.contains(it.key(), it.value());
+                  });
+                  if (MAIN().isDebugEnabled())
+                      for (auto it = remoteRemovals.begin();
+                           it != remoteRemovals.end(); ++it) {
+                          qCDebug(MAIN)
+                              << it.value() << "is no more a direct chat with"
+                              << it.key()->id();
+                      }
 
-            DirectChatsMap additions;
-            for (auto it = usersToDCs.begin(); it != usersToDCs.end(); ++it)
-            {
-                if (auto* u = user(it.key()))
-                {
-                    if (!d->directChats.contains(u, it.value()))
-                    {
-                        Q_ASSERT(!d->directChatUsers.contains(it.value(), u));
-                        additions.insert(u, it.value());
-                        d->directChats.insert(u, it.value());
-                        d->directChatUsers.insert(it.value(), u);
-                        qCDebug(MAIN) << "Marked room" << it.value()
+                  DirectChatsMap remoteAdditions;
+                  for (auto it = usersToDCs.begin(); it != usersToDCs.end();
+                           ++it) {
+                      if (auto* u = user(it.key())) {
+                          if (!d->directChats.contains(u, it.value())
+                              && !d->dcLocalRemovals.contains(u, it.value()))
+                          {
+                              Q_ASSERT(
+                                  !d->directChatUsers.contains(it.value(), u));
+                              remoteAdditions.insert(u, it.value());
+                              d->directChats.insert(u, it.value());
+                              d->directChatUsers.insert(it.value(), u);
+                              qCDebug(MAIN)
+                                      << "Marked room" << it.value()
                                       << "as a direct chat with" << u->id();
-                    }
-                } else
-                    qCWarning(MAIN)
-                            << "Couldn't get a user object for" << it.key();
-            }
-            if (!additions.isEmpty() || !removals.isEmpty())
-                emit directChatsListChanged(additions, removals);
+                          }
+                      } else
+                          qCWarning(MAIN) << "Couldn't get a user object for"
+                                          << it.key();
+                  }
+                  // Remove from dcLocalAdditions what the server already has.
+                  erase_if(d->dcLocalAdditions, [&remoteAdditions](auto it) {
+                      return remoteAdditions.contains(it.key(), it.value());
+                  });
+                  if (!remoteAdditions.isEmpty() || !remoteRemovals.isEmpty())
+                      emit directChatsListChanged(remoteAdditions, remoteRemovals);
+              },
+              // catch-all, passing eventPtr for a possible take-over
+              [this, &eventPtr](const Event& accountEvent) {
+                  if (is<IgnoredUsersEvent>(accountEvent))
+                      qCDebug(MAIN)
+                              << "Users ignored by" << d->userId << "updated:"
+                              << QStringList::fromSet(ignoredUsers()).join(',');
 
-            continue;
-        }
-        if (is<IgnoredUsersEvent>(*accountEvent))
-            qCDebug(MAIN) << "Users ignored by" << d->userId << "updated:"
-                << QStringList::fromSet(ignoredUsers()).join(',');
-
-        auto& currentData = d->accountData[accountEvent->matrixType()];
-        // A polymorphic event-specific comparison might be a bit more
-        // efficient; maaybe do it another day
-        if (!currentData ||
-                currentData->contentJson() != accountEvent->contentJson())
-        {
-            currentData = std::move(accountEvent);
-            qCDebug(MAIN) << "Updated account data of type"
-                          << currentData->matrixType();
-            emit accountDataChanged(currentData->matrixType());
-        }
+                  auto& currentData = d->accountData[accountEvent.matrixType()];
+                  // A polymorphic event-specific comparison might be a bit more
+                  // efficient; maaybe do it another day
+                  if (!currentData
+                      || currentData->contentJson()
+                              != accountEvent.contentJson()) {
+                      currentData = std::move(eventPtr);
+                      qCDebug(MAIN) << "Updated account data of type"
+                                    << currentData->matrixType();
+                      emit accountDataChanged(currentData->matrixType());
+                  }
+              });
+    }
+    if (!d->dcLocalAdditions.isEmpty() || !d->dcLocalRemovals.isEmpty()) {
+        qDebug(MAIN) << "Sending updated direct chats to the server:"
+                     << d->dcLocalRemovals.size() << "removal(s),"
+                     << d->dcLocalAdditions.size() << "addition(s)";
+        callApi<SetAccountDataJob>(d->userId, QStringLiteral("m.direct"),
+                                   toJson(d->directChats));
+        d->dcLocalAdditions.clear();
+        d->dcLocalRemovals.clear();
     }
 }
 
 void Connection::stopSync()
 {
-    if (d->syncJob)
+    // If there's a sync loop, break it
+    disconnect(this, &Connection::syncDone,
+               this, &Connection::syncLoopIteration);
+    if (d->syncJob) // If there's an ongoing sync job, stop it too
     {
         d->syncJob->abandon();
         d->syncJob = nullptr;
@@ -426,14 +540,32 @@ JoinRoomJob* Connection::joinRoom(const QString& roomAlias,
                                   const QStringList& serverNames)
 {
     auto job = callApi<JoinRoomJob>(roomAlias, serverNames);
+    // Upon completion, ensure a room object in Join state is created but only
+    // if it's not already there due to a sync completing earlier.
     connect(job, &JoinRoomJob::success,
-            this, [this, job] { provideRoom(job->roomId(), JoinState::Join); });
+            this, [this, job] { provideRoom(job->roomId()); });
     return job;
 }
 
-void Connection::leaveRoom(Room* room)
+LeaveRoomJob* Connection::leaveRoom(Room* room)
 {
-    callApi<LeaveRoomJob>(room->id());
+    const auto& roomId = room->id();
+    const auto job = callApi<LeaveRoomJob>(roomId);
+    if (room->joinState() == JoinState::Invite)
+    {
+        // Workaround matrix-org/synapse#2181 - if the room is in invite state
+        // the invite may have been cancelled but Synapse didn't send it in
+        // `/sync`. See also #273 for the discussion in the library context.
+        d->pendingStateRoomIds.push_back(roomId);
+        connect(job, &LeaveRoomJob::success, this, [this,roomId] {
+            if (d->pendingStateRoomIds.removeOne(roomId))
+            {
+                qCDebug(MAIN) << "Forcing the room to Leave status";
+                provideRoom(roomId, JoinState::Leave);
+            }
+        });
+    }
+    return job;
 }
 
 inline auto splitMediaId(const QString& mediaId)
@@ -466,13 +598,21 @@ MediaThumbnailJob* Connection::getThumbnail(const QUrl& url,
 }
 
 UploadContentJob* Connection::uploadContent(QIODevice* contentSource,
-        const QString& filename, const QString& contentType) const
+        const QString& filename, const QString& overrideContentType) const
 {
+    auto contentType = overrideContentType;
+    if (contentType.isEmpty())
+    {
+        contentType =
+            QMimeDatabase().mimeTypeForFileNameAndData(filename, contentSource)
+            .name();
+        contentSource->open(QIODevice::ReadOnly);
+    }
     return callApi<UploadContentJob>(contentSource, filename, contentType);
 }
 
 UploadContentJob* Connection::uploadFile(const QString& fileName,
-                                         const QString& contentType)
+                                         const QString& overrideContentType)
 {
     auto sourceFile = new QFile(fileName);
     if (!sourceFile->open(QIODevice::ReadOnly))
@@ -482,7 +622,7 @@ UploadContentJob* Connection::uploadFile(const QString& fileName,
         return nullptr;
     }
     return uploadContent(sourceFile, QFileInfo(*sourceFile).fileName(),
-                         contentType);
+                         overrideContentType);
 }
 
 GetContentJob* Connection::getContent(const QString& mediaId) const
@@ -508,7 +648,8 @@ DownloadFileJob* Connection::downloadFile(const QUrl& url,
 
 CreateRoomJob* Connection::createRoom(RoomVisibility visibility,
     const QString& alias, const QString& name, const QString& topic,
-    QStringList invites, const QString& presetName, bool isDirect,
+    QStringList invites, const QString& presetName,
+    const QString& roomVersion, bool isDirect,
     const QVector<CreateRoomJob::StateEvent>& initialState,
     const QVector<CreateRoomJob::Invite3pid>& invite3pids,
     const QJsonObject& creationContent)
@@ -517,10 +658,19 @@ CreateRoomJob* Connection::createRoom(RoomVisibility visibility,
     auto job = callApi<CreateRoomJob>(
             visibility == PublishRoom ? QStringLiteral("public")
                                       : QStringLiteral("private"),
-            alias, name, topic, invites, invite3pids, QString(/*TODO: #233*/),
+            alias, name, topic, invites, invite3pids, roomVersion,
             creationContent, initialState, presetName, isDirect);
-    connect(job, &BaseJob::success, this, [this,job] {
-        emit createdRoom(provideRoom(job->roomId(), JoinState::Join));
+    connect(job, &BaseJob::success, this, [this,job,invites,isDirect] {
+        auto* room = provideRoom(job->roomId(), JoinState::Join);
+        if (!room)
+        {
+            Q_ASSERT_X(room, "Connection::createRoom", "Failed to create a room");
+            return;
+        }
+        emit createdRoom(room);
+        if (isDirect)
+            for (const auto& i: invites)
+                addToDirectChats(room, user(i));
     });
     return job;
 }
@@ -556,8 +706,8 @@ void Connection::doInDirectChat(User* u,
 {
     Q_ASSERT(u);
     const auto& userId = u->id();
-    // There can be more than one DC; find the first valid, and delete invalid
-    // (left/forgotten) ones along the way.
+    // There can be more than one DC; find the first valid (existing and
+    // not left), and delete inexistent (forgotten?) ones along the way.
     DirectChatsMap removals;
     for (auto it = d->directChats.find(u);
          it != d->directChats.end() && it.key() == u; ++it)
@@ -594,6 +744,8 @@ void Connection::doInDirectChat(User* u,
                         << roomId << "is not valid and will be discarded";
         // Postpone actual deletion until we finish iterating d->directChats.
         removals.insert(it.key(), it.value());
+        // Add to the list of updates to send to the server upon the next sync.
+        d->dcLocalRemovals.insert(it.key(), it.value());
     }
     if (!removals.isEmpty())
     {
@@ -603,7 +755,7 @@ void Connection::doInDirectChat(User* u,
             d->directChatUsers.remove(it.value(),
                                       const_cast<User*>(it.key())); // FIXME
         }
-        d->broadcastDirectChatUpdates({}, removals);
+        emit directChatsListChanged({}, removals);
     }
 
     auto j = createDirectChat(userId);
@@ -618,8 +770,8 @@ void Connection::doInDirectChat(User* u,
 CreateRoomJob* Connection::createDirectChat(const QString& userId,
     const QString& topic, const QString& name)
 {
-    return createRoom(UnpublishRoom, "", name, topic, {userId},
-                      "trusted_private_chat", true);
+    return createRoom(UnpublishRoom, {}, name, topic, {userId},
+                      QStringLiteral("trusted_private_chat"), {}, true);
 }
 
 ForgetRoomJob* Connection::forgetRoom(const QString& id)
@@ -698,6 +850,11 @@ QUrl Connection::homeserver() const
     return d->data->baseUrl();
 }
 
+QString Connection::domain() const
+{
+    return d->userId.section(':', 1);
+}
+
 Room* Connection::room(const QString& roomId, JoinStates states) const
 {
     Room* room = d->roomMap.value({roomId, false}, nullptr);
@@ -714,6 +871,41 @@ Room* Connection::room(const QString& roomId, JoinStates states) const
         return room;
 
     return nullptr;
+}
+
+Room* Connection::roomByAlias(const QString& roomAlias, JoinStates states) const
+{
+    const auto id = d->roomAliasMap.value(roomAlias);
+    if (!id.isEmpty())
+        return room(id, states);
+    qCWarning(MAIN) << "Room for alias" << roomAlias
+                    << "is not found under account" << userId();
+    return nullptr;
+}
+
+void Connection::updateRoomAliases(const QString& roomId,
+                                   const QStringList& previousRoomAliases,
+                                   const QStringList& roomAliases)
+{
+    for (const auto& a: previousRoomAliases)
+        if (d->roomAliasMap.remove(a) == 0)
+            qCWarning(MAIN) << "Alias" << a << "is not found (already deleted?)";
+
+    for (const auto& a: roomAliases)
+    {
+        auto& mappedId = d->roomAliasMap[a];
+        if (!mappedId.isEmpty())
+        {
+            if (mappedId == roomId)
+                qCDebug(MAIN) << "Alias" << a << "is already mapped to room"
+                              << roomId;
+            else
+                qCWarning(MAIN) << "Alias" << a
+                                << "will be force-remapped from room"
+                                << mappedId << "to" << roomId;
+        }
+        mappedId = roomId;
+    }
 }
 
 Room* Connection::invitation(const QString& roomId) const
@@ -825,7 +1017,8 @@ QHash<QString, QVector<Room*>> Connection::tagsToRooms() const
     QHash<QString, QVector<Room*>> result;
     for (auto* r: qAsConst(d->roomMap))
     {
-        for (const auto& tagName: r->tagNames())
+        const auto& tagNames = r->tagNames();
+        for (const auto& tagName: tagNames)
             result[tagName].push_back(r);
     }
     for (auto it = result.begin(); it != result.end(); ++it)
@@ -840,9 +1033,12 @@ QStringList Connection::tagNames() const
 {
     QStringList tags ({FavouriteTag});
     for (auto* r: qAsConst(d->roomMap))
-        for (const auto& tag: r->tagNames())
+    {
+        const auto& tagNames = r->tagNames();
+        for (const auto& tag: tagNames)
             if (tag != LowPriorityTag && !tags.contains(tag))
                 tags.push_back(tag);
+    }
     tags.push_back(LowPriorityTag);
     return tags;
 }
@@ -860,28 +1056,6 @@ Connection::DirectChatsMap Connection::directChats() const
     return d->directChats;
 }
 
-QJsonObject toJson(const Connection::DirectChatsMap& directChats)
-{
-    QJsonObject json;
-    for (auto it = directChats.begin(); it != directChats.end();)
-    {
-        QJsonArray roomIds;
-        const auto* user = it.key();
-        for (; it != directChats.end() && it.key() == user; ++it)
-            roomIds.append(*it);
-        json.insert(user->id(), roomIds);
-    }
-    return json;
-}
-
-void Connection::Private::broadcastDirectChatUpdates(const DirectChatsMap& additions,
-                                                     const DirectChatsMap& removals)
-{
-    q->callApi<SetAccountDataJob>(userId, QStringLiteral("m.direct"),
-                                  toJson(directChats));
-    emit q->directChatsListChanged(additions, removals);
-}
-
 void Connection::addToDirectChats(const Room* room, User* user)
 {
     Q_ASSERT(room != nullptr && user != nullptr);
@@ -890,8 +1064,8 @@ void Connection::addToDirectChats(const Room* room, User* user)
     Q_ASSERT(!d->directChatUsers.contains(room->id(), user));
     d->directChats.insert(user, room->id());
     d->directChatUsers.insert(room->id(), user);
-    DirectChatsMap additions { { user, room->id() } };
-    d->broadcastDirectChatUpdates(additions, {});
+    d->dcLocalAdditions.insert(user, room->id());
+    emit directChatsListChanged({ { user, room->id() } }, {});
 }
 
 void Connection::removeFromDirectChats(const QString& roomId, User* user)
@@ -904,15 +1078,17 @@ void Connection::removeFromDirectChats(const QString& roomId, User* user)
     DirectChatsMap removals;
     if (user != nullptr)
     {
-        removals.insert(user, roomId);
         d->directChats.remove(user, roomId);
         d->directChatUsers.remove(roomId, user);
+        removals.insert(user, roomId);
+        d->dcLocalRemovals.insert(user, roomId);
     } else {
         removals = erase_if(d->directChats,
                             [&roomId] (auto it) { return it.value() == roomId; });
         d->directChatUsers.remove(roomId);
+        d->dcLocalRemovals += removals;
     }
-    d->broadcastDirectChatUpdates({}, removals);
+    emit directChatsListChanged({}, removals);
 }
 
 bool Connection::isDirectChat(const QString& roomId) const
@@ -972,11 +1148,12 @@ const ConnectionData* Connection::connectionData() const
     return d->data.get();
 }
 
-Room* Connection::provideRoom(const QString& id, JoinState joinState)
+Room* Connection::provideRoom(const QString& id, Omittable<JoinState> joinState)
 {
     // TODO: This whole function is a strong case for a RoomManager class.
     Q_ASSERT_X(!id.isEmpty(), __FUNCTION__, "Empty room id");
 
+    // If joinState.omitted(), all joinState == comparisons below are false.
     const auto roomKey = qMakePair(id, joinState == JoinState::Invite);
     auto* room = d->roomMap.value(roomKey, nullptr);
     if (room)
@@ -986,10 +1163,19 @@ Room* Connection::provideRoom(const QString& id, JoinState joinState)
         // and emit a signal. For Invite and Join, there's no such problem.
         if (room->joinState() == joinState && joinState != JoinState::Leave)
             return room;
-    }
-    else
+    } else if (joinState.omitted())
     {
-        room = roomFactory()(this, id, joinState);
+        // No Join and Leave, maybe Invite?
+        room = d->roomMap.value({id, true}, nullptr);
+        if (room)
+            return room;
+        // No Invite either, setup a new room object below
+    }
+
+    if (!room)
+    {
+        room = roomFactory()(this, id,
+                joinState.omitted() ? JoinState::Join : joinState.value());
         if (!room)
         {
             qCCritical(MAIN) << "Failed to create a room" << id;
@@ -1001,6 +1187,9 @@ Room* Connection::provideRoom(const QString& id, JoinState joinState)
                 this, &Connection::aboutToDeleteRoom);
         emit newRoom(room);
     }
+    if (joinState.omitted())
+        return room;
+
     if (joinState == JoinState::Invite)
     {
         // prev is either Leave or nullptr
@@ -1009,7 +1198,7 @@ Room* Connection::provideRoom(const QString& id, JoinState joinState)
     }
     else
     {
-        room->setJoinState(joinState);
+        room->setJoinState(joinState.value());
         // Preempt the Invite room (if any) with a room in Join/Leave state.
         auto* prevInvite = d->roomMap.take({id, true});
         if (joinState == JoinState::Join)
@@ -1018,6 +1207,9 @@ Room* Connection::provideRoom(const QString& id, JoinState joinState)
             emit leftRoom(room, prevInvite);
         if (prevInvite)
         {
+            const auto dcUsers = prevInvite->directChatUsers();
+            for (auto* u: dcUsers)
+                addToDirectChats(room, u);
             qCDebug(MAIN) << "Deleting Invite state for room" << prevInvite->id();
             emit prevInvite->beforeDestruction(prevInvite);
             prevInvite->deleteLater();
@@ -1070,7 +1262,8 @@ void Connection::saveRoomState(Room* r) const
     if (!d->cacheState)
         return;
 
-    QFile outRoomFile { stateCachePath() % SyncData::fileNameForRoom(r->id()) };
+    QFile outRoomFile {
+            stateCacheDir().filePath(SyncData::fileNameForRoom(r->id())) };
     if (outRoomFile.open(QFile::WriteOnly))
     {
         QJsonDocument json { r->toJson() };
@@ -1091,7 +1284,7 @@ void Connection::saveState() const
 
     QElapsedTimer et; et.start();
 
-    QFile outFile { stateCachePath() % "state.json" };
+    QFile outFile { d->topLevelStatePath() };
     if (!outFile.open(QFile::WriteOnly))
     {
         qCWarning(MAIN) << "Error opening" << outFile.fileName()
@@ -1109,18 +1302,19 @@ void Connection::saveState() const
     {
         QJsonObject rooms;
         QJsonObject inviteRooms;
-        for (const auto* i : roomMap()) // Pass on rooms in Leave state
+        const auto& rs = roomMap(); // Pass on rooms in Leave state
+        for (const auto* i : rs)
             (i->joinState() == JoinState::Invite ? inviteRooms : rooms)
             .insert(i->id(), QJsonValue::Null);
 
         QJsonObject roomObj;
         if (!rooms.isEmpty())
-            roomObj.insert("join", rooms);
+            roomObj.insert(QStringLiteral("join"), rooms);
         if (!inviteRooms.isEmpty())
-            roomObj.insert("invite", inviteRooms);
+            roomObj.insert(QStringLiteral("invite"), inviteRooms);
 
-        rootObj.insert("next_batch", d->data->lastEvent());
-        rootObj.insert("rooms", roomObj);
+        rootObj.insert(QStringLiteral("next_batch"), d->data->lastEvent());
+        rootObj.insert(QStringLiteral("rooms"), roomObj);
     }
     {
         QJsonArray accountDataEvents {
@@ -1130,7 +1324,7 @@ void Connection::saveState() const
             accountDataEvents.append(
                 basicEventJson(e.first, e.second->contentJson()));
 
-        rootObj.insert("account_data",
+        rootObj.insert(QStringLiteral("account_data"),
             QJsonObject {{ QStringLiteral("events"), accountDataEvents }});
     }
 
@@ -1150,7 +1344,7 @@ void Connection::loadState()
 
     QElapsedTimer et; et.start();
 
-    SyncData sync { stateCachePath() % "state.json" };
+    SyncData sync { d->topLevelStatePath() };
     if (sync.nextBatch().isEmpty()) // No token means no cache by definition
         return;
 
@@ -1167,6 +1361,11 @@ void Connection::loadState()
 }
 
 QString Connection::stateCachePath() const
+{
+    return stateCacheDir().path() % '/';
+}
+
+QDir Connection::stateCacheDir() const
 {
     auto safeUserId = userId();
     safeUserId.replace(':', '_');
@@ -1203,9 +1402,54 @@ void QMatrixClient::Connection::setLazyLoading(bool newValue)
 
 void Connection::getTurnServers()
 {
-  auto job = callApi<GetTurnServerJob>();
-  connect( job, &GetTurnServerJob::success, [=] {
-      emit turnServersChanged(job->data());
-  });
+    auto job = callApi<GetTurnServerJob>();
+    connect(job, &GetTurnServerJob::success,
+            this, [=] { emit turnServersChanged(job->data()); });
+}
 
+const QString Connection::SupportedRoomVersion::StableTag =
+        QStringLiteral("stable");
+
+QString Connection::defaultRoomVersion() const
+{
+    Q_ASSERT(!d->capabilities.roomVersions.omitted());
+    return d->capabilities.roomVersions->defaultVersion;
+}
+
+QStringList Connection::stableRoomVersions() const
+{
+    Q_ASSERT(!d->capabilities.roomVersions.omitted());
+    QStringList l;
+    const auto& allVersions = d->capabilities.roomVersions->available;
+    for (auto it = allVersions.begin(); it != allVersions.end(); ++it)
+        if (it.value() == SupportedRoomVersion::StableTag)
+            l.push_back(it.key());
+    return l;
+}
+
+inline bool roomVersionLess(const Connection::SupportedRoomVersion& v1,
+                            const Connection::SupportedRoomVersion& v2)
+{
+    bool ok1 = false, ok2 = false;
+    const auto vNum1 = v1.id.toFloat(&ok1);
+    const auto vNum2 = v2.id.toFloat(&ok2);
+    return ok1 && ok2 ? vNum1 < vNum2 : v1.id < v2.id;
+}
+
+QVector<Connection::SupportedRoomVersion> Connection::availableRoomVersions() const
+{
+    Q_ASSERT(!d->capabilities.roomVersions.omitted());
+    QVector<SupportedRoomVersion> result;
+    result.reserve(d->capabilities.roomVersions->available.size());
+    for (auto it = d->capabilities.roomVersions->available.begin();
+         it != d->capabilities.roomVersions->available.end(); ++it)
+        result.push_back({ it.key(), it.value() });
+    // Put stable versions over unstable; within each group,
+    // sort numeric versions as numbers, the rest as strings.
+    const auto mid = std::partition(result.begin(), result.end(),
+                                    std::mem_fn(&SupportedRoomVersion::isStable));
+    std::sort(result.begin(), mid, roomVersionLess);
+    std::sort(mid, result.end(), roomVersionLess);
+
+    return result;
 }
