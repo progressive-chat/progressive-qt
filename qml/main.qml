@@ -319,14 +319,21 @@ ApplicationWindow {
     PDialog {
         id: joinRoomDialog
 
-        title: "Input Room Alias or ID"
+        title: "Join Room"
 
-        contentItem: AutoTextField {
-            id: joinRoomDialogTextField
-            placeholderText: "#matrix:matrix.org"
+        maxWidth: 480
+
+        // FORK-ONLY: public room directory browser ported from Dec 2019.
+        contentItem: PublicRoomBrowser {
+            connection: currentConnection
+
+            onJoinRequested: {
+                progressiveController.joinRoom(currentConnection, roomIdOrAlias)
+                joinRoomDialog.close()
+            }
         }
 
-        onAccepted: progressiveController.joinRoom(currentConnection, joinRoomDialogTextField.text)
+        onAccepted: joinRoomDialog.close()
     }
 
     PDialog {

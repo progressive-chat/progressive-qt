@@ -115,6 +115,7 @@ RowLayout {
                     switch (eventType) {
                     case "image":
                         return imageComponent
+                    case "video":
                     case "file":
                         return fileComponent
                     case "audio":
@@ -122,7 +123,7 @@ RowLayout {
                     }
                 }
 
-                active: eventType === "image" || eventType === "file" || eventType === "audio"
+                active: eventType === "image" || eventType === "video" || eventType === "file" || eventType === "audio"
             }
 
             Row {

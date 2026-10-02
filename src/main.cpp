@@ -18,6 +18,7 @@
 #include "imageitem.h"
 #include "imageprovider.h"
 #include "messageeventmodel.h"
+#include "publicroomlistmodel.h"
 #include "room.h"
 #include "roomlistmodel.h"
 #include "spectralroom.h"
@@ -94,6 +95,8 @@ int main(int argc, char *argv[]) {
   qmlRegisterType<AccountListModel>("Progressive", 0, 1, "AccountListModel");
   qmlRegisterType<RoomListModel>("Progressive", 0, 1, "RoomListModel");
   qmlRegisterType<UserListModel>("Progressive", 0, 1, "UserListModel");
+  qmlRegisterType<PublicRoomListModel>("Progressive", 0, 1,
+                                       "PublicRoomListModel");
   qmlRegisterType<MessageEventModel>("Progressive", 0, 1, "MessageEventModel");
   qmlRegisterType<EmojiModel>("Progressive", 0, 1, "EmojiModel");
   qmlRegisterUncreatableType<RoomMessageEvent>("Progressive", 0, 1,
