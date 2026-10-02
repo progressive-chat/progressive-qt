@@ -20,6 +20,20 @@
 #include "messageeventmodel.h"
 #include "publicroomlistmodel.h"
 #include "userdirectorylistmodel.h"
+
+#ifdef PROGRESSIVE_STATIC_QT
+// Static Qt build: import the QML/platform plugins explicitly (no dlopen).
+#include <QtPlugin>
+Q_IMPORT_PLUGIN(QMinimalIntegrationPlugin)
+Q_IMPORT_PLUGIN(QOffscreenIntegrationPlugin)
+Q_IMPORT_PLUGIN(QtQuick2Plugin)
+Q_IMPORT_PLUGIN(QtQuick2WindowPlugin)
+Q_IMPORT_PLUGIN(QtQuickControlsPlugin)
+Q_IMPORT_PLUGIN(QtQuickLayoutsPlugin)
+Q_IMPORT_PLUGIN(QtQmlModelsPlugin)
+Q_IMPORT_PLUGIN(QtGraphicalEffectsPlugin)
+Q_IMPORT_PLUGIN(QmlSettingsPlugin)
+#endif
 #include "room.h"
 #include "roomlistmodel.h"
 #include "spectralroom.h"
@@ -115,6 +129,11 @@ int main(int argc, char *argv[]) {
   QQmlApplicationEngine engine;
 
   engine.addImportPath("qrc:/imports");
+#ifdef PROGRESSIVE_STATIC_QT
+  // Static Qt build: QML modules are embedded in resources (see static-qml
+  // handling in progressive-qt.pro).
+  engine.addImportPath("qrc:/qt56qml");
+#endif
   ImageProvider *m_provider = new ImageProvider();
   engine.rootContext()->setContextProperty("imageProvider", m_provider);
   // Qt 5.6 compat: QML StandardPaths lives in Qt.labs.platform (5.8+),

@@ -158,3 +158,17 @@ mac {
     QMAKE_LFLAGS += -framework Foundation -framework Cocoa
     SOURCES += src/notifications/managermac.mm
 }
+
+# Static Qt build (single-file binary, e.g. the linux-arm64 release):
+# qmake sets CONFIG+=static automatically when the Qt itself is static,
+# so this block is inert for the normal shared-toolchain builds.
+# Before running qmake, generate the embedded-QML resource with:
+#   COMPAT/gen-static-qml-qrc.sh <static-qt-prefix> <build-dir>
+static {
+    DEFINES += PROGRESSIVE_STATIC_QT
+    QTPLUGIN += qminimal qoffscreen \
+        qtquick2plugin windowplugin qtquickcontrolsplugin \
+        qquicklayoutsplugin modelsplugin qtgraphicaleffectsprivate \
+        qmlsettingsplugin
+    RESOURCES += $$OUT_PWD/qt56-static-qml.qrc
+}
