@@ -126,6 +126,14 @@ Column {
         PButton {
             Layout.fillWidth: true
 
+            text: "Mark all as read"
+
+            onClicked: progressiveController.markAllMessagesAsRead(connection)
+        }
+
+        PButton {
+            Layout.fillWidth: true
+
             text: "Logout"
 
             onClicked: progressiveController.logout(connection)

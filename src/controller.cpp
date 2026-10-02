@@ -264,3 +264,14 @@ void Controller::postNotification(const QString& roomId, const QString& eventId,
   notificationsManager.postNotification(roomId, eventId, roomName, senderName,
                                         text, icon, iconPath);
 }
+
+// FORK-ONLY: mark-all-as-read ported from Sep 2019.
+void Controller::markAllMessagesAsRead(Connection* conn) {
+  if (!conn) {
+    qCritical() << "Attempt to mark all as read on null connection";
+    return;
+  }
+  for (auto room : conn->roomMap().values()) {
+    room->markAllMessagesAsRead();
+  }
+}

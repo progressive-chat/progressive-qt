@@ -83,6 +83,8 @@ class Controller : public QObject {
   void createRoom(Connection* c, const QString& name, const QString& topic);
   void createDirectChat(Connection* c, const QString& userID);
   void copyToClipboard(const QString& text);
+  // FORK-ONLY: mark-all-as-read ported from Sep 2019.
+  void markAllMessagesAsRead(Connection* conn);
   void playAudio(QUrl localFile);
   void postNotification(const QString& roomId, const QString& eventId,
                         const QString& roomName, const QString& senderName,
