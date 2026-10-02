@@ -137,8 +137,9 @@ void MessageEventModel::setRoom(SpectralRoom* room) {
         m_currentRoom, &Room::replacedEvent, this,
         [this](const RoomEvent* newEvent) { refreshEvent(newEvent->id()); });
     // NOTE (Progressive Chat Qt, fork-only): refresh reactions on updates.
+    // DisplayRole too, so edited text appears.
     connect(m_currentRoom, &Room::updatedEvent, this, [this](const QString& eventId) {
-      refreshEventRoles(eventId, {ReactionRole});
+      refreshEventRoles(eventId, {ReactionRole, Qt::DisplayRole});
     });
     connect(m_currentRoom, &Room::fileTransferProgress, this,
             &MessageEventModel::refreshEvent);
@@ -244,12 +245,15 @@ QVariant MessageEventModel::data(const QModelIndex& idx, int role) const {
   const auto& evt = isPending ? **pendingIt : **timelineIt;
 
   if (role == Qt::DisplayRole) {
-    return utils::eventToString(evt, m_currentRoom, Qt::RichText);
+    return utils::eventToString(utils::editedVersion(evt, m_currentRoom),
+                                m_currentRoom, Qt::RichText);
   }
 
   if (role == MessageRole) {
     static const QRegExp rmReplyRegExp("^> <@.*:.*> .*\n\n(.*)");
-    return utils::eventToString(evt, m_currentRoom).replace(rmReplyRegExp, "\\1");
+    return utils::eventToString(utils::editedVersion(evt, m_currentRoom),
+                                m_currentRoom)
+        .replace(rmReplyRegExp, "\\1");
   }
 
   if (role == Qt::ToolTipRole) {
@@ -319,8 +323,8 @@ QVariant MessageEventModel::data(const QModelIndex& idx, int role) const {
   if (role == SpecialMarksRole) {
     if (isPending) return pendingIt->deliveryStatus();
 
-    if (is<RedactionEvent>(evt) || is<ReactionEvent>(evt))
-      return EventStatus::Hidden;
+    if (is<RedactionEvent>(evt) || is<ReactionEvent>(evt)) return EventStatus::Hidden;
+    if (utils::isEditEvent(evt)) return EventStatus::Hidden;
     if (evt.isRedacted()) return EventStatus::Redacted;
 
     if (evt.isStateEvent() &&

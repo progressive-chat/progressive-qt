@@ -110,9 +110,15 @@ void SpectralRoom::sendTypingNotification(bool isTyping) {
 
 QString SpectralRoom::lastEvent() {
   if (timelineSize() == 0) return "";
-  const RoomEvent* lastEvent = messageEvents().rbegin()->get();
+  // NOTE (Progressive Chat Qt, fork-only): skip edit events (mirrors
+  // upstream handling) so the preview shows real messages.
+  auto it = messageEvents().rbegin();
+  while (it != messageEvents().rend() && utils::isEditEvent(**it)) ++it;
+  if (it == messageEvents().rend()) return "";
+  const RoomEvent* lastEvent = it->get();
   return user(lastEvent->senderId())->displayname() + ": " +
-         utils::removeReply(utils::eventToString(*lastEvent, this));
+         utils::removeReply(utils::eventToString(
+             utils::editedVersion(*lastEvent, this), this));
 }
 
 bool SpectralRoom::isEventHighlighted(const RoomEvent* e) const {
