@@ -28,12 +28,19 @@
 #include <functional>
 #include <memory>
 
-#if defined(__has_cpp_attribute) && __has_cpp_attribute(fallthrough)
+// NDK GCC 4.9 has no __has_cpp_attribute at all (not even for defined()
+// checks combined with &&, because the preprocessor chokes parsing the
+// call) - hence the nesting, not a one-liner.
+#ifdef __has_cpp_attribute
+#if __has_cpp_attribute(fallthrough)
 #define FALLTHROUGH [[fallthrough]]
-#elif defined(__has_cpp_attribute) && __has_cpp_attribute(clang::fallthrough)
+#elif __has_cpp_attribute(clang::fallthrough)
 #define FALLTHROUGH [[clang::fallthrough]]
-#elif defined(__has_cpp_attribute) && __has_cpp_attribute(gnu::fallthrough)
+#elif __has_cpp_attribute(gnu::fallthrough)
 #define FALLTHROUGH [[gnu::fallthrough]]
+#else
+#define FALLTHROUGH // -fallthrough
+#endif
 #else
 #define FALLTHROUGH // -fallthrough
 #endif
