@@ -33,6 +33,8 @@ class MessageEventModel : public QAbstractListModel {
     UserMarkerRole,
     // For debugging
     EventResolvedTypeRole,
+    // NOTE (Progressive Chat Qt, fork-only): backported reactions support.
+    ReactionRole,
   };
 
   explicit MessageEventModel(QObject* parent = nullptr);

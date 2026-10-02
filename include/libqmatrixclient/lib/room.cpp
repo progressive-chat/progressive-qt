@@ -31,6 +31,7 @@
 #include "csapi/tags.h"
 #include "csapi/room_upgrades.h"
 #include "events/simplestateevents.h"
+#include "events/reactionevent.h"
 #include "events/roomcreateevent.h"
 #include "events/roomtombstoneevent.h"
 #include "events/roomavatarevent.h"
@@ -98,6 +99,11 @@ class Room::Private
         Timeline timeline;
         PendingEvents unsyncedEvents;
         QHash<QString, TimelineItem::index_t> eventsIndex;
+        // NOTE (Progressive Chat Qt): backported from Jul 2019 lib. A map
+        // from evtId to a map of relation type to a vector of event
+        // pointers. Not using QMultiHash, because we want to quickly return
+        // a number of relations for a given event without enumerating them.
+        QHash<QString, QHash<QString, RelatedEvents>> relations;
         QString displayname;
         Avatar avatar;
         int highlightCount = 0;
@@ -702,6 +708,23 @@ Room::findPendingEvent(const QString& txnId) const
 {
     return std::find_if(d->unsyncedEvents.cbegin(), d->unsyncedEvents.cend(),
             [txnId] (const auto& item) { return item->transactionId() == txnId; });
+}
+
+// NOTE (Progressive Chat Qt): backported from Jul 2019 lib.
+const Room::RelatedEvents Room::relatedEvents(const QString& evtId,
+                                              const char* relType) const
+{
+    auto it = findInTimeline(evtId);
+    if (it == historyEdge())
+        return {};
+
+    return relatedEvents(it->event()->id(), relType);
+}
+
+const Room::RelatedEvents Room::relatedEvents(const RoomEvent& evt,
+                                              const char* relType) const
+{
+    return d->relations.value(evt.id()).value(relType);
 }
 
 void Room::Private::getAllMembers()
@@ -2108,6 +2131,18 @@ Room::Changes Room::Private::addNewMessageEvents(RoomEvents&& events)
             if (auto* evt = it->viewAs<CallEventBase>())
                 emit q->callEvent(q, evt);
 
+    // NOTE (Progressive Chat Qt): backported from Jul 2019 lib — collect
+    // relations (reactions, edits) for the newly arrived events.
+    if (totalInserted > 0)
+        for (auto it = from; it != timeline.cend(); ++it) {
+            if (const auto* reaction = it->viewAs<ReactionEvent>()) {
+                const auto& relation = reaction->relation();
+                relations[relation.eventId][relation.type] << reaction;
+                if (eventsIndex.contains(relation.eventId))
+                    emit q->updatedEvent(relation.eventId);
+            }
+        }
+
     if (totalInserted > 0)
     {
         qCDebug(MAIN)
@@ -2167,6 +2202,17 @@ void Room::Private::addHistoricalMessageEvents(RoomEvents&& events)
                   << "past events; the oldest event is now" << timeline.front();
     q->onAddHistoricalTimelineEvents(from);
     emit q->addedMessages(timeline.front().index(), from->index());
+
+    // NOTE (Progressive Chat Qt): backported from Jul 2019 lib — collect
+    // relations for historical events too.
+    for (auto it = from; it != timeline.crend(); ++it) {
+        if (const auto* reaction = it->viewAs<ReactionEvent>()) {
+            const auto& relation = reaction->relation();
+            relations[relation.eventId][relation.type] << reaction;
+            if (eventsIndex.contains(relation.eventId))
+                emit q->updatedEvent(relation.eventId);
+        }
+    }
 
     if (from <= q->readMarker())
         updateUnreadCount(from, timeline.crend());

@@ -1,6 +1,8 @@
 import QtQuick 2.6
 import QtQuick.Controls 1.4
 
+import Progressive.Component 2.0
+
 Menu {
     property var row: null
     property var model: null
@@ -9,6 +11,27 @@ Menu {
     readonly property bool isFile: model  && (model.eventType === "video" || model.eventType === "audio" || model.eventType === "file" || model.eventType === "image")
 
     id: messageContextMenu
+
+    // FORK-ONLY: quick reactions ported from Jul 2019 (PItemDelegate
+    // instead of ItemDelegate for Qt 5.6).
+    Row {
+        spacing: 0
+
+        Repeater {
+            model: ["👍", "👎", "😄", "🎉", "🚀", "👀"]
+
+            PItemDelegate {
+                width: 36
+                height: 36
+
+                text: modelData
+
+                onClicked: currentRoom.toggleReaction(model.eventId, modelData)
+            }
+        }
+    }
+
+    MenuSeparator {}
 
     MenuItem {
         text: "View Source"

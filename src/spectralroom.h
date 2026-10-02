@@ -116,6 +116,9 @@ class SpectralRoom : public Room {
   void sendTypingNotification(bool isTyping);
   void sendReply(QString userId, QString eventId, QString replyContent,
                  QString sendContent);
+  // NOTE (Progressive Chat Qt, fork-only): backported from Jul 2019.
+  Q_INVOKABLE void toggleReaction(const QString& eventId,
+                                  const QString& reaction);
 };
 
 #endif  // SpectralRoom_H

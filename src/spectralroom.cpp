@@ -7,6 +7,7 @@
 #include "csapi/leaving.h"
 #include "csapi/typing.h"
 #include "events/typingevent.h"
+#include "events/reactionevent.h"
 
 #include <QFileDialog>
 #include <QMetaObject>
@@ -213,4 +214,43 @@ QVariantList SpectralRoom::getUsers(const QString& prefix) {
       matchedList.append(QVariant::fromValue(u));
 
   return matchedList;
+}
+
+// NOTE (Progressive Chat Qt, fork-only): backported from Jul 2019.
+void SpectralRoom::toggleReaction(const QString& eventId,
+                                  const QString& reaction) {
+  if (eventId.isEmpty() || reaction.isEmpty())
+    return;
+
+  const auto eventIt = findInTimeline(eventId);
+  if (eventIt == timelineEdge())
+    return;
+
+  const auto& evt = **eventIt;
+
+  QStringList redactEventIds;  // What if there are multiple reaction events?
+
+  const auto& annotations = relatedEvents(evt, EventRelation::Annotation());
+  if (!annotations.isEmpty()) {
+    for (const auto& a : annotations) {
+      if (auto e = eventCast<const ReactionEvent>(a)) {
+        if (e->relation().key != reaction)
+          continue;
+
+        if (e->senderId() == localUser()->id()) {
+          redactEventIds.push_back(e->id());
+          break;
+        }
+      }
+    }
+  }
+
+  if (!redactEventIds.isEmpty()) {
+    for (auto redactEventId : redactEventIds) {
+      redactEvent(redactEventId);
+    }
+    return;
+  }
+
+  postEvent(new ReactionEvent(EventRelation::annotate(eventId, reaction)));
 }

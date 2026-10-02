@@ -167,6 +167,10 @@ RowLayout {
                     font.pointSize: 8
                 }
             }
+
+            ReactionDelegate {
+                Layout.fillWidth: true
+            }
         }
 
         Component {

@@ -46,6 +46,7 @@ HEADERS += \
     $$SRCPATH/events/accountdataevents.h \
     $$SRCPATH/events/directchatevent.h \
     $$SRCPATH/events/redactionevent.h \
+    $$SRCPATH/events/reactionevent.h \
     $$SRCPATH/events/eventloader.h \
     $$SRCPATH/jobs/requestdata.h \
     $$SRCPATH/jobs/basejob.h \
@@ -87,6 +88,7 @@ SOURCES += \
     $$SRCPATH/events/callhangupevent.cpp \
     $$SRCPATH/events/callinviteevent.cpp \
     $$SRCPATH/events/receiptevent.cpp \
+    $$SRCPATH/events/reactionevent.cpp \
     $$SRCPATH/events/directchatevent.cpp \
     $$SRCPATH/jobs/requestdata.cpp \
     $$SRCPATH/jobs/basejob.cpp \

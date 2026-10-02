@@ -50,6 +50,7 @@
         <file>imports/Progressive/Component/AutoListView.qml</file>
         <file>imports/Progressive/Component/Timeline/TimelineImage.qml</file>
         <file>imports/Progressive/Component/Timeline/TimelineLabel.qml</file>
+        <file>imports/Progressive/Component/Timeline/ReactionDelegate.qml</file>
         <file>imports/Progressive/Component/AutoTextField.qml</file>
         <file>imports/Progressive/Panel/RoomPanelInput.qml</file>
         <file>imports/Progressive/Component/SplitView.qml</file>

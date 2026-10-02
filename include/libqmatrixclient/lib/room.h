@@ -120,6 +120,9 @@ namespace QMatrixClient
         public:
             using Timeline = std::deque<TimelineItem>;
             using PendingEvents = std::vector<PendingEventItem>;
+            // NOTE (Progressive Chat Qt): backported from Jul 2019 lib for
+            // reactions/edits (m.annotation / m.replace relations).
+            using RelatedEvents = QVector<const RoomEvent*>;
             using rev_iter_t = Timeline::const_reverse_iterator;
             using timeline_iter_t = Timeline::const_iterator;
 
@@ -257,6 +260,12 @@ namespace QMatrixClient
             rev_iter_t findInTimeline(const QString& evtId) const;
             PendingEvents::iterator findPendingEvent(const QString & txnId);
             PendingEvents::const_iterator findPendingEvent(const QString & txnId) const;
+
+            // NOTE (Progressive Chat Qt): backported from Jul 2019 lib.
+            const RelatedEvents relatedEvents(const QString& evtId,
+                                              const char* relType) const;
+            const RelatedEvents relatedEvents(const RoomEvent& evt,
+                                              const char* relType) const;
 
             bool displayed() const;
             /// Mark the room as currently displayed to the user
@@ -566,6 +575,10 @@ namespace QMatrixClient
             void accountDataChanged(QString type);
             void tagsAboutToChange();
             void tagsChanged();
+
+            // NOTE (Progressive Chat Qt): backported from Jul 2019 lib;
+            // emitted when new relations (reactions, edits) arrive for it.
+            void updatedEvent(QString eventId);
 
             void replacedEvent(const RoomEvent* newEvent,
                                const RoomEvent* oldEvent);

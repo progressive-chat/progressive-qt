@@ -1,10 +1,13 @@
 #include "messageeventmodel.h"
 
+#include "spectraluser.h"
+
 #include <connection.h>
 #include <settings.h>
 #include <user.h>
 
 #include <events/redactionevent.h>
+#include <events/reactionevent.h>
 #include <events/roomavatarevent.h>
 #include <events/roommemberevent.h>
 #include <events/simplestateevents.h>
@@ -40,6 +43,8 @@ QHash<int, QByteArray> MessageEventModel::roleNames() const {
   roles[AnnotationRole] = "annotation";
   roles[EventResolvedTypeRole] = "eventResolvedType";
   roles[UserMarkerRole] = "userMarker";
+  // NOTE (Progressive Chat Qt, fork-only): backported reactions support.
+  roles[ReactionRole] = "reaction";
   return roles;
 }
 
@@ -131,6 +136,10 @@ void MessageEventModel::setRoom(SpectralRoom* room) {
     connect(
         m_currentRoom, &Room::replacedEvent, this,
         [this](const RoomEvent* newEvent) { refreshEvent(newEvent->id()); });
+    // NOTE (Progressive Chat Qt, fork-only): refresh reactions on updates.
+    connect(m_currentRoom, &Room::updatedEvent, this, [this](const QString& eventId) {
+      refreshEventRoles(eventId, {ReactionRole});
+    });
     connect(m_currentRoom, &Room::fileTransferProgress, this,
             &MessageEventModel::refreshEvent);
     connect(m_currentRoom, &Room::fileTransferCompleted, this,
@@ -310,7 +319,8 @@ QVariant MessageEventModel::data(const QModelIndex& idx, int role) const {
   if (role == SpecialMarksRole) {
     if (isPending) return pendingIt->deliveryStatus();
 
-    if (is<RedactionEvent>(evt)) return EventStatus::Hidden;
+    if (is<RedactionEvent>(evt) || is<ReactionEvent>(evt))
+      return EventStatus::Hidden;
     if (evt.isRedacted()) return EventStatus::Redacted;
 
     if (evt.isStateEvent() &&
@@ -345,6 +355,40 @@ QVariant MessageEventModel::data(const QModelIndex& idx, int role) const {
       variantList.append(QVariant::fromValue(user));
     }
     return variantList;
+  }
+
+  if (role == ReactionRole) {
+    // NOTE (Progressive Chat Qt, fork-only): backported from Jul 2019.
+    if (isPending) return {};
+    const auto& annotations =
+        m_currentRoom->relatedEvents(evt, EventRelation::Annotation());
+    if (annotations.isEmpty()) return {};
+    QMap<QString, QList<SpectralUser*>> reactions;
+    for (const auto& a : annotations) {
+      if (a->isRedacted())  // Just in case?
+        continue;
+      if (auto e = eventCast<const ReactionEvent>(a))
+        reactions[e->relation().key].append(
+            static_cast<SpectralUser*>(m_currentRoom->user(e->senderId())));
+    }
+    if (reactions.isEmpty()) return {};
+
+    QVariantList res;
+    auto i = reactions.constBegin();
+    while (i != reactions.constEnd()) {
+      QVariantList authors;
+      for (auto author : i.value()) {
+        if (author) authors.append(QVariant::fromValue(author));
+      }
+      bool hasLocalUser = i.value().contains(
+          static_cast<SpectralUser*>(m_currentRoom->localUser()));
+      res.append(QVariantMap{{"reaction", i.key()},
+                             {"count", i.value().count()},
+                             {"authors", authors},
+                             {"hasLocalUser", hasLocalUser}});
+      ++i;
+    }
+    return res;
   }
 
   if (role == AboveEventTypeRole || role == AboveSectionRole ||
