@@ -727,6 +727,13 @@ const Room::RelatedEvents Room::relatedEvents(const RoomEvent& evt,
     return d->relations.value(evt.id()).value(relType);
 }
 
+// NOTE (Progressive Chat Qt, fork-only): minimal power-level backport.
+const StateEventBase* Room::getStateEvent(const QString& matrixType,
+                                          const QString& stateKey) const
+{
+    return d->currentState.value({matrixType, stateKey}, nullptr);
+}
+
 void Room::Private::getAllMembers()
 {
     // If already loaded or already loading, there's nothing to do here.

@@ -8,6 +8,7 @@
 #include "csapi/typing.h"
 #include "events/typingevent.h"
 #include "events/reactionevent.h"
+#include "powerlevels.h"
 
 #include <QFileDialog>
 #include <QMetaObject>
@@ -259,4 +260,34 @@ void SpectralRoom::toggleReaction(const QString& eventId,
   }
 
   postEvent(new ReactionEvent(EventRelation::annotate(eventId, reaction)));
+}
+
+// NOTE (Progressive Chat Qt, fork-only): minimal power-level backport.
+QJsonObject SpectralRoom::powerLevelsContent() const {
+  const auto* plEvt =
+      getStateEvent(QStringLiteral("m.room.power_levels"));
+  return plEvt ? plEvt->contentJson() : QJsonObject();
+}
+
+int SpectralRoom::powerLevelForUser(const QString& userId) const {
+  return powerlevels::userLevel(powerLevelsContent(), userId);
+}
+
+bool SpectralRoom::canSendEvent(const QString& eventType) const {
+  const auto content = powerLevelsContent();
+  return powerlevels::userLevel(content, localUser()->id()) >=
+         powerlevels::requiredForEvent(content, eventType);
+}
+
+bool SpectralRoom::canSendState(const QString& eventType) const {
+  const auto content = powerLevelsContent();
+  return powerlevels::userLevel(content, localUser()->id()) >=
+         powerlevels::requiredForState(content, eventType);
+}
+
+bool SpectralRoom::canKick(const QString& userId) const {
+  const auto content = powerLevelsContent();
+  const auto own = powerlevels::userLevel(content, localUser()->id());
+  return own >= powerlevels::kickLevel(content) &&
+         own > powerlevels::userLevel(content, userId);
 }

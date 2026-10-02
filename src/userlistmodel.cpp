@@ -1,15 +1,22 @@
 #include "userlistmodel.h"
 
+#include "powerlevels.h"
+
 #include <QElapsedTimer>
 #include <QtCore/QDebug>
 #include <QtGui/QPixmap>
+#include <QtQml>  // for qmlRegisterType()
 
 #include <connection.h>
 #include <room.h>
 #include <user.h>
 
 UserListModel::UserListModel(QObject* parent)
-    : QAbstractListModel(parent), m_currentRoom(nullptr) {}
+    : QAbstractListModel(parent), m_currentRoom(nullptr) {
+  // NOTE (Progressive Chat Qt, fork-only): cf. EventStatus registration.
+  qmlRegisterUncreatableType<UserType>(
+      "Progressive", 0, 1, "UserType", "UserType is not a creatable type");
+}
 
 void UserListModel::setRoom(QMatrixClient::Room* room) {
   if (m_currentRoom == room) return;
@@ -75,6 +82,39 @@ QVariant UserListModel::data(const QModelIndex& index, int role) const {
       return user->avatar(64, m_currentRoom);
     return QImage();
   }
+  if (role == PermRole) {
+    // NOTE (Progressive Chat Qt, fork-only): mirrors upstream Jan 2020
+    // classification over the powerlevels.h JSON helpers.
+    const auto* plEvt = m_currentRoom->getStateEvent(
+        QStringLiteral("m.room.power_levels"));
+    const auto content = plEvt ? plEvt->contentJson() : QJsonObject();
+    const auto userPl =
+        powerlevels::userLevel(content, user->id());
+
+    if (userPl == powerlevels::usersDefault(content)) {  // Shortcut
+      return UserType::Member;
+    }
+
+    if (userPl < powerlevels::requiredForState(content, "m.room.message")) {
+      return UserType::Muted;
+    }
+
+    if (userPl == powerlevels::highestExplicitLevel(content)) {
+      return UserType::Owner;
+    }
+
+    if (userPl >= powerlevels::requiredForState(content, "m.room.power_levels")) {
+      return UserType::Admin;
+    }
+
+    if (userPl >= powerlevels::banLevel(content) ||
+        userPl >= powerlevels::kickLevel(content) ||
+        userPl >= powerlevels::redactLevel(content)) {
+      return UserType::Moderator;
+    }
+
+    return UserType::Member;
+  }
 
   return QVariant();
 }
@@ -131,5 +171,6 @@ QHash<int, QByteArray> UserListModel::roleNames() const {
   roles[NameRole] = "name";
   roles[UserIDRole] = "userId";
   roles[AvatarRole] = "avatar";
+  roles[PermRole] = "perm";
   return roles;
 }

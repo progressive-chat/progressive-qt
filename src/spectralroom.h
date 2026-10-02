@@ -4,6 +4,7 @@
 #include "room.h"
 #include "spectraluser.h"
 
+#include <QJsonObject>
 #include <QObject>
 #include <QTimer>
 
@@ -89,6 +90,9 @@ class SpectralRoom : public Room {
   QString getMIME(const QUrl& fileUrl) const;
   void postFile(const QUrl& localFile, const QUrl& mxcUrl);
 
+  // NOTE (Progressive Chat Qt, fork-only): power-level content JSON.
+  QJsonObject powerLevelsContent() const;
+
   void checkForHighlights(const QMatrixClient::TimelineItem& ti);
 
   void onAddNewTimelineEvents(timeline_iter_t from) override;
@@ -119,6 +123,12 @@ class SpectralRoom : public Room {
   // NOTE (Progressive Chat Qt, fork-only): backported from Jul 2019.
   Q_INVOKABLE void toggleReaction(const QString& eventId,
                                   const QString& reaction);
+  // NOTE (Progressive Chat Qt, fork-only): minimal power-level backport
+  // (Jan 2020 concepts over the May 2019 lib, see powerlevels.h).
+  Q_INVOKABLE int powerLevelForUser(const QString& userId) const;
+  Q_INVOKABLE bool canSendEvent(const QString& eventType) const;
+  Q_INVOKABLE bool canSendState(const QString& eventType) const;
+  Q_INVOKABLE bool canKick(const QString& userId) const;
 };
 
 #endif  // SpectralRoom_H

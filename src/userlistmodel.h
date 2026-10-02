@@ -17,7 +17,13 @@ class UserListModel : public QAbstractListModel {
   Q_PROPERTY(
       QMatrixClient::Room* room READ room WRITE setRoom NOTIFY roomChanged)
  public:
-  enum EventRoles { NameRole = Qt::UserRole + 1, UserIDRole, AvatarRole };
+  enum EventRoles {
+    NameRole = Qt::UserRole + 1,
+    UserIDRole,
+    AvatarRole,
+    // NOTE (Progressive Chat Qt, fork-only): power-level badge role.
+    PermRole
+  };
 
   using User = QMatrixClient::User;
 
@@ -47,6 +53,21 @@ class UserListModel : public QAbstractListModel {
 
   int findUserPos(User* user) const;
   int findUserPos(const QString& username) const;
+};
+
+// NOTE (Progressive Chat Qt, fork-only): user power-level badge enum,
+// exposed to QML as UserType (cf. upstream Jan 2020).
+class UserType : public QObject {
+  Q_OBJECT
+ public:
+  enum Types {
+    Owner = 1,
+    Admin,
+    Moderator,
+    Member,
+    Muted,
+  };
+  Q_ENUM(Types)
 };
 
 #endif  // USERLISTMODEL_H

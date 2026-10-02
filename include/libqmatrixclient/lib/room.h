@@ -38,6 +38,7 @@ namespace QMatrixClient
     class RoomMemberEvent;
     class Connection;
     class User;
+    class StateEventBase;
     class MemberSorter;
     class LeaveRoomJob;
     class SetRoomStateWithKeyJob;
@@ -266,6 +267,13 @@ namespace QMatrixClient
                                               const char* relType) const;
             const RelatedEvents relatedEvents(const RoomEvent& evt,
                                               const char* relType) const;
+
+            // NOTE (Progressive Chat Qt, fork-only): minimal power-level
+            // backport. Returns the current state event for (type, stateKey)
+            // or nullptr if there is none (e.g. no m.room.power_levels yet).
+            const StateEventBase* getStateEvent(
+                    const QString& matrixType,
+                    const QString& stateKey = {}) const;
 
             bool displayed() const;
             /// Mark the room as currently displayed to the user

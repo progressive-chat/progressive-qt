@@ -80,6 +80,9 @@ PDrawer {
 
                 contentItem: MaterialIcon { icon: "\ue5ca" }
 
+                // FORK-ONLY: power-level gate (m.room.name).
+                enabled: room && room.canSendState("m.room.name")
+
                 onClicked: room.setName(roomNameField.text)
             }
         }
@@ -100,6 +103,9 @@ PDrawer {
                 Layout.preferredHeight: 48
 
                 contentItem: MaterialIcon { icon: "\ue5ca" }
+
+                // FORK-ONLY: power-level gate (m.room.topic).
+                enabled: room && room.canSendState("m.room.topic")
 
                 onClicked: room.setTopic(roomTopicField.text)
             }
@@ -144,6 +150,20 @@ PDrawer {
 
                             text: name
                         }
+
+                        // FORK-ONLY: power-level badge ported from Jan 2020.
+                        Label {
+                            visible: perm !== UserType.Member
+
+                            text: {
+                                if (perm === UserType.Owner) return "Owner"
+                                if (perm === UserType.Admin) return "Admin"
+                                if (perm === UserType.Moderator) return "Mod"
+                                if (perm === UserType.Muted) return "Muted"
+                                return ""
+                            }
+                            color: perm === UserType.Muted ? "grey" : PPalette.accent
+                        }
                     }
 
                     onClicked: expanded = !expanded
@@ -161,6 +181,10 @@ PDrawer {
                         Layout.fillWidth: true
 
                         text: "Kick"
+
+                        // FORK-ONLY: only enabled when our power level
+                        // allows kicking this user.
+                        enabled: room && room.canKick(userId)
 
                         onClicked: room.kickMember(userId)
                     }
