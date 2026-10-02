@@ -4,7 +4,7 @@ name: Linux PC Qt 5.6 (arm64)
 
 on:
   push:
-    branches: [main]
+    branches: [main, port/*]
   pull_request:
   workflow_dispatch:
 

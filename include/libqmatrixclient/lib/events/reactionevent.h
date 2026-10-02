@@ -35,7 +35,9 @@ struct EventRelation
 
     QString type;
     QString eventId;
-    QString key = {}; // Only used for m.annotation for now
+    QString key; // Only used for m.annotation for now (no NSDMI: NDK GCC
+                 // 4.9 cannot brace-init aggregates with default member
+                 // initialisers even in gnu++14 mode)
 
     static EventRelation replyTo(QString eventId)
     {

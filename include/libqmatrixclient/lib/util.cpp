@@ -114,24 +114,24 @@ static_assert(std::is_same<fn_arg_t<decltype(f2), 1>, QString>::value,
               "Test fn_arg_t<>");
 
 struct S { int mf(); };
-static_assert(is_callable_v<decltype(&S::mf)>, "Test member function");
+static_assert(is_callable<decltype(&S::mf)>::value, "Test member function");
 static_assert(returns<int, decltype(&S::mf)>(), "Test returns<> with member function");
 
 struct Fo { int operator()(); };
-static_assert(is_callable_v<Fo>, "Test is_callable<> with function object");
+static_assert(is_callable<Fo>::value, "Test is_callable<> with function object");
 static_assert(function_traits<Fo>::arg_number == 0, "Test function object");
 static_assert(std::is_same<fn_return_t<Fo>, int>::value,
               "Test return type of function object");
 
 struct Fo1 { void operator()(int); };
 static_assert(function_traits<Fo1>::arg_number == 1, "Test function object 1");
-static_assert(is_callable_v<Fo1>, "Test is_callable<> with function object 1");
+static_assert(is_callable<Fo1>::value, "Test is_callable<> with function object 1");
 static_assert(std::is_same<fn_arg_t<Fo1>, int>(),
               "Test fn_arg_t defaulting to first argument");
 
 #if (!defined(_MSC_VER) || _MSC_VER >= 1910)
 static auto l = [] { return 1; };
-static_assert(is_callable_v<decltype(l)>, "Test is_callable_v<> with lambda");
+static_assert(is_callable<decltype(l)>::value, "Test is_callable<> with lambda");
 static_assert(std::is_same<fn_return_t<decltype(l)>, int>::value,
               "Test fn_return_t<> with lambda");
 #endif
@@ -146,12 +146,12 @@ struct fn_object<QString>
 {
     void operator()(QString);
 };
-static_assert(is_callable_v<fn_object<QString>>, "Test function object");
+static_assert(is_callable<fn_object<QString>>::value, "Test function object");
 static_assert(returns<void, fn_object<QString>>(),
               "Test returns<> with function object");
-static_assert(!is_callable_v<fn_object<int>>, "Test non-function object");
+static_assert(!is_callable<fn_object<int>>::value, "Test non-function object");
 // FIXME: These two don't work
-//static_assert(is_callable_v<decltype(&fn_object<int>::smf)>,
+//static_assert(is_callable<decltype(&fn_object<int>::smf)>,
 //              "Test static member function");
 //static_assert(returns<int, decltype(&fn_object<int>::smf)>(),
 //              "Test returns<> with static member function");

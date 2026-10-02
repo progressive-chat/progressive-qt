@@ -28,11 +28,11 @@
 #include <functional>
 #include <memory>
 
-#if __has_cpp_attribute(fallthrough)
+#if defined(__has_cpp_attribute) && __has_cpp_attribute(fallthrough)
 #define FALLTHROUGH [[fallthrough]]
-#elif __has_cpp_attribute(clang::fallthrough)
+#elif defined(__has_cpp_attribute) && __has_cpp_attribute(clang::fallthrough)
 #define FALLTHROUGH [[clang::fallthrough]]
-#elif __has_cpp_attribute(gnu::fallthrough)
+#elif defined(__has_cpp_attribute) && __has_cpp_attribute(gnu::fallthrough)
 #define FALLTHROUGH [[gnu::fallthrough]]
 #else
 #define FALLTHROUGH // -fallthrough
@@ -238,9 +238,12 @@ namespace QMatrixClient
         return std::is_same<fn_return_t<FnT>, R>::value;
     }
 
-    // Poor-man's is_invokable
+    // Poor-man's is_invokable (struct form: NDK GCC 4.9 has no
+    // variable templates even in gnu++14 mode)
     template <typename T>
-    constexpr auto is_callable_v = function_traits<T>::is_callable;
+    struct is_callable
+        : std::integral_constant<bool, function_traits<T>::is_callable>
+    { };
 
     inline auto operator"" _ls(const char* s, std::size_t size)
     {
