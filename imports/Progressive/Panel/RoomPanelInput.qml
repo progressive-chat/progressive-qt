@@ -187,7 +187,7 @@ Rectangle {
                     interval: 2000
                     onTriggered: {
                         repeatTimer.stop()
-                        currentRoom.sendTypingNotification(false)
+                        if (currentRoom) currentRoom.sendTypingNotification(false)
                     }
                 }
 
@@ -196,7 +196,7 @@ Rectangle {
 
                     repeat: true
                     interval: 5000
-                    onTriggered: currentRoom.sendTypingNotification(true)
+                    onTriggered: { if (currentRoom) currentRoom.sendTypingNotification(true) }
                 }
 
                 Keys.onReturnPressed: {

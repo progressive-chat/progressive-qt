@@ -11,6 +11,11 @@ TextField {
     selectByMouse: true
 
     style: TextFieldStyle {
+        // FORK-ONLY: explicit text colors — the custom background would
+        // otherwise leave typed text at the style default (unreadable
+        // in one of the themes).
+        textColor: PPalette.foreground
+        placeholderTextColor: PPalette.secondaryText
         background: Rectangle {
             implicitHeight: 48
             color: PPalette.inputBackground

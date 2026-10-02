@@ -8,7 +8,7 @@ Text {
 
     id: materialLabel
 
-    color: PSettings.darkTheme ? "white" : "dark"
+    color: PSettings.darkTheme ? "white" : "black"
     font.pointSize: 16
     font.family: MaterialFont.name
     horizontalAlignment: Text.AlignHCenter
