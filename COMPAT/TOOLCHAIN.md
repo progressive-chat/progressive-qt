@@ -93,3 +93,32 @@ platforms android-10/14/16 + build-tools 24.0.3. Key ingredients:
 - Result: 9.6 MB debug APK with `lib/armeabi-v7a/libprogressive-chat.so`
   plus Qt 5.6 Core/Gui/Network/Qml/Quick/Widgets.
 - `android/AndroidManifest.xml` declares minSdk 9 / targetSdk 14.
+
+## HTTPS / OpenSSL (why logins looked "forever loading")
+
+Qt 5.6 built with `-no-openssl` **cannot speak HTTPS at all**: every
+`QNetworkReply` fails locally with
+
+    err 301  "Protocol \"https\" is unknown"
+
+Matrix homeservers are HTTPS-only, so every login died before the first
+packet. `BaseJob` then retried that job silently for ~a minute and
+nothing reached the UI — hence a login button stuck on "Logging in...".
+Spectral/NeoChat never showed this because its Qt linked OpenSSL.
+
+Fix: `COMPAT/build-qt56-ssl.sh` builds OpenSSL **1.0.2u** (Qt 5.6 does
+*not* support 1.1.x — `struct x509_st` became opaque and
+`qsslcertificate_openssl.cpp` stops compiling; 1.1 support came with
+Qt 5.9) and reconfigures the static Qt 5.6.3 with `-openssl-linked`.
+
+Two gotchas baked into the script:
+
+1. `./configure` only passes `-I`/`-L` to its own feature tests, never to
+   the library build, so the OpenSSL include/lib path must be injected
+   into `qtbase/src/network/ssl/ssl.pri` by hand.
+2. `OPENSSL_LIBS=...` must be an **environment** variable; passing it as
+   a configure argument makes configure bail with "unknown argument".
+
+Verified: `QSslSocket::supportsSsl() == true` and a live request to
+`https://matrix.org/_matrix/client/versions` returns HTTP 200 from a
+binary built with this toolchain.
