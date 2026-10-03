@@ -91,11 +91,18 @@ void progressiveMessageHandler(QtMsgType, const QMessageLogContext&,
 // a user report contains actionable information. No allocation is done in
 // the handler (backtrace_symbols_fd only writes to an fd).
 #include <csignal>
-#include <execinfo.h>
 #include <unistd.h>
+
+// Android/Bionic has neither execinfo.h nor backtrace(), so the handler is
+// desktop-only. The release APK still reports crashes via logcat.
+#if !defined(Q_OS_ANDROID) && defined(__linux__)
+#include <execinfo.h>
+#define PROGRESSIVE_HAVE_BACKTRACE 1
+#endif
 
 extern "C" void progressiveFatalSignalHandler(int sig)
 {
+#ifdef PROGRESSIVE_HAVE_BACKTRACE
   void* frames[64];
   const int n = ::backtrace(frames, 64);
   // Marker so it is greppable in the crash output.
@@ -106,6 +113,7 @@ extern "C" void progressiveFatalSignalHandler(int sig)
   static const char msg2[] = "=== end backtrace ===\n";
   const ssize_t ignored2 = ::write(STDERR_FILENO, msg2, sizeof(msg2) - 1);
   Q_UNUSED(ignored2);
+#endif
 
   // Restore the default action and re-raise, so the exit status and any
   // core dump behave exactly as they would have without this handler.
