@@ -94,6 +94,15 @@ Item {
 
                 spacing: 8
 
+                // FORK-ONLY: role defaults. The delegate is asked for rows
+                // that no longer exist while the model resets around it, and
+                // the model answers with an invalid QVariant - so every role
+                // becomes undefined and `text: section` / `text: display`
+                // warned. A present role overrides these.
+                property string section: ""
+                property string aboveSection: ""
+                property string display: ""
+
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
 

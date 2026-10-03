@@ -23,6 +23,33 @@ RowLayout {
     // of undefined (undefined made `visible` non-boolean and sent
     // QtQuick.Layouts into an endless re-layout loop).
     property var reply: null
+
+    // FORK-ONLY: declare defaults for every role this delegate uses.
+    // While a ListView tears down / rebuilds delegates around a model reset
+    // the model is queried for rows that no longer exist and answers with an
+    // invalid QVariant, so *all* roles become undefined at once. Without
+    // defaults that produced a wall of "Cannot read property 'displayName' of
+    // undefined" / "Unable to assign [undefined] to bool" spam. A role that
+    // is present simply overrides these.
+    // An empty user object rather than null: author.displayName /
+    // author.avatar are read unconditionally, and null would turn every
+    // one of them into a TypeError.
+    property var author: ({ "displayName": "", "avatar": "", "id": "" })
+    property var userMarker: []
+    property string eventType: ""
+    property string display: ""
+    property bool highlight: false
+    property string section: ""
+    property string aboveSection: ""
+    property var aboveAuthor: null
+    property string aboveEventType: ""
+    property var aboveTime: new Date()
+    property var time: new Date()
+    property bool readMarker: false
+    property string eventId: ""
+    property int marks: 0
+    property var content: ({})
+    property var progressInfo: null
     readonly property bool replyVisible:
         !!(reply && reply.eventId !== undefined && reply.eventId !== "")
 
