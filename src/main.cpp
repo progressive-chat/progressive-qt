@@ -127,13 +127,34 @@ extern "C" void progressiveFatalSignalHandler(int sig)
 
 static void progressiveInstallCrashHandler()
 {
+#ifdef PROGRESSIVE_HAVE_BACKTRACE
+  // A stack-overflow SIGSEGV cannot be reported from the handler itself:
+  // the guard page is already hit, so the handler has no stack to run on
+  // and the process dies silently. Give the handler its own stack via
+  // sigaltstack() + SA_ONSTACK - this is what makes QML binding loops
+  // (i.e. infinite recursion) visible instead of an unexplained segfault.
+  // 256 KiB: SIGSTKSZ is not a compile-time constant on modern glibc.
+  static char altStack[256 * 1024];
+  stack_t ss;
+  ss.ss_sp = altStack;
+  ss.ss_size = sizeof(altStack);
+  ss.ss_flags = 0;
+  if (sigaltstack(&ss, nullptr) != 0) {
+    static const char msg[] =
+        "\n=== progressive-chat: sigaltstack() failed; stack-overflow "
+        "crashes will not be reportable ===\n";
+    const ssize_t ignored = ::write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    Q_UNUSED(ignored);
+  }
+#endif
+
   // NOTE: do NOT name this "signals" - Qt defines that as a macro.
   const int fatalSignals[] = {SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE};
   struct sigaction sa;
   sa.sa_handler = progressiveFatalSignalHandler;
   sigemptyset(&sa.sa_mask);
-  // No SA_RESETHAND: we reset it ourselves before re-raising.
-  sa.sa_flags = 0;
+  // No SA_RESETHARD: we reset it ourselves before re-raising.
+  sa.sa_flags = SA_ONSTACK;
   for (int sig : fatalSignals) ::sigaction(sig, &sa, nullptr);
 }
 
