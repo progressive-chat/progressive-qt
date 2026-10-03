@@ -66,12 +66,17 @@ ColumnLayout {
 
                 spacing: 8
 
-                ImageItem {
+                // FORK-ONLY: the directory models hand out an mxc id
+                // (server/mediaId), not a QImage like the room/user models
+                // do, so resolve it through the mxc image provider instead
+                // of ImageItem (whose image property is typed QImage).
+                Image {
                     Layout.preferredWidth: height
                     Layout.fillHeight: true
+                    sourceSize.height: height
 
-                    image: avatar
-                    hint: name
+                    source: avatar ? "image://mxc/" + avatar : ""
+                    fillMode: Image.PreserveAspectCrop
                 }
 
                 Label {

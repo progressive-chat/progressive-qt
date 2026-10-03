@@ -718,7 +718,11 @@ const Room::RelatedEvents Room::relatedEvents(const QString& evtId,
     if (it == historyEdge())
         return {};
 
-    return relatedEvents(it->event()->id(), relType);
+    // NOTE (Progressive Chat Qt): call the RoomEvent overload. Passing
+    // it->event()->id() would select *this* QString overload again and
+    // recurse until the stack overflows (upstream libQuotient had this
+    // latent bug; it only bites once a timeline contains relations).
+    return relatedEvents(**it, relType);
 }
 
 const Room::RelatedEvents Room::relatedEvents(const RoomEvent& evt,
