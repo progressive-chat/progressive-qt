@@ -19,6 +19,12 @@ RowLayout {
     // 0x05 == EventStatus.SendingFailed (hex literal like RoomPanelForm,
     // so the headless harness needs no C++ type registration).
     readonly property bool failed: marks === 0x05
+    // FORK-ONLY: declare the role so a row without it yields null instead
+    // of undefined (undefined made `visible` non-boolean and sent
+    // QtQuick.Layouts into an endless re-layout loop).
+    property var reply: null
+    readonly property bool replyVisible:
+        !!(reply && reply.eventId !== undefined && reply.eventId !== "")
 
     signal saveFileAs()
     signal openExternally()
@@ -88,7 +94,7 @@ RowLayout {
                 Layout.fillWidth: true
                 Layout.preferredHeight: replyRow.implicitHeight + 6
 
-                visible: reply && reply.eventId !== ""
+                visible: messageRow.replyVisible
 
                 id: replyPreview
 
@@ -110,7 +116,11 @@ RowLayout {
                     TimelineLabel {
                         width: parent.width - 9
 
-                        text: "In reply to " + (reply && reply.author ? reply.author.displayName : "") + ": " + (reply ? reply.display : "")
+                        text: messageRow.replyVisible
+                              ? "In reply to "
+                                + (reply.author ? reply.author.displayName : "")
+                                + ": " + reply.display
+                              : ""
                         coloredBackground: highlighted
                         foreground: "grey"
                         font.pointSize: 8

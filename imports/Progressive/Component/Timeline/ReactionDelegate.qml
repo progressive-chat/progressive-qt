@@ -8,18 +8,31 @@ import Progressive.Setting 0.1
 import Progressive.Style 0.1
 
 Item {
-    // Invisible when the message has no reactions.
-    visible: reaction && reaction.length > 0
-
-    implicitWidth: flow.implicitWidth
-    implicitHeight: flow.implicitHeight
-
     id: root
+
+    // FORK-ONLY: declare the role so that a row without it yields an empty
+    // list. Without this, a missing role produced ReferenceError/undefined,
+    // `visible` became non-boolean, and QtQuick.Layouts re-ran layout
+    // forever (UI hang + endless "Unable to assign [undefined] to bool").
+    property var reaction: []
+
+    // Always a real bool - never undefined.
+    readonly property bool hasReactions: !!(reaction && reaction.length > 0)
+
+    // Invisible when the message has no reactions.
+    visible: hasReactions
+
+    // Only the height is derived from the content: propagating implicitWidth
+    // back up from the Flow (which was anchored to this item) fed a size
+    // cycle into the surrounding ColumnLayout.
+    implicitHeight: hasReactions ? flow.implicitHeight : 0
 
     Flow {
         id: flow
 
-        anchors.fill: parent
+        x: 0
+        width: parent.width
+        height: implicitHeight
 
         spacing: 8
 
