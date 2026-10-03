@@ -22,6 +22,12 @@ class Controller : public QObject {
   Q_OBJECT
   Q_PROPERTY(int accountCount READ accountCount NOTIFY connectionAdded NOTIFY
                  connectionDropped)
+  // FORK-ONLY: login progress as a property. The UI used to rely on signal
+  // ordering (button text/reset), which could leave it stuck on
+  // "Logging in..." if a signal was missed. A property binding cannot
+  // desynchronise.
+  Q_PROPERTY(bool loginInProgress READ loginInProgress NOTIFY
+                 loginInProgressChanged)
   Q_PROPERTY(bool quitOnLastWindowClosed READ quitOnLastWindowClosed WRITE
                  setQuitOnLastWindowClosed NOTIFY quitOnLastWindowClosedChanged)
 
@@ -40,6 +46,7 @@ class Controller : public QObject {
 
   // All the Q_PROPERTYs.
   int accountCount() { return m_connections.count(); }
+  bool loginInProgress() const { return m_loginInProgress; }
 
   bool quitOnLastWindowClosed() {
     return QApplication::quitOnLastWindowClosed();
@@ -75,6 +82,7 @@ class Controller : public QObject {
   // saying "Logging in..." (upstream never fixed this dead end).
   void loginSucceeded();
   void loginFailed();
+  void loginInProgressChanged();
   void connectionAdded(Connection* conn);
   void connectionDropped(Connection* conn);
   void initiated();
@@ -96,6 +104,11 @@ class Controller : public QObject {
                         const QUrl& iconPath);
 
   static QImage safeImage(QImage image);
+
+ private:
+  // FORK-ONLY: loginInProgress backing store.
+  bool m_loginInProgress = false;
+  void setLoginInProgress(bool inProgress);
 };
 
 #endif  // CONTROLLER_H

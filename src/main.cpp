@@ -82,7 +82,55 @@ void progressiveMessageHandler(QtMsgType, const QMessageLogContext&,
 #define PROGRESSIVE_STAGE(m) ((void)0)
 #endif
 
+// FORK-ONLY: print a native backtrace on fatal signals.
+//
+// Crashes on exotic/old hardware are otherwise reported as a bare
+// "Segmentation fault (core dumped)" with no clue where they come from.
+// This writes a plain-text backtrace to stderr (and to the on-device log
+// file, if one is writable) before re-raising with the default handler, so
+// a user report contains actionable information. No allocation is done in
+// the handler (backtrace_symbols_fd only writes to an fd).
+#include <csignal>
+#include <execinfo.h>
+#include <unistd.h>
+
+extern "C" void progressiveFatalSignalHandler(int sig)
+{
+  void* frames[64];
+  const int n = ::backtrace(frames, 64);
+  // Marker so it is greppable in the crash output.
+  static const char msg[] = "\n=== progressive-chat: fatal signal, backtrace follows ===\n";
+  const ssize_t ignored = ::write(STDERR_FILENO, msg, sizeof(msg) - 1);
+  Q_UNUSED(ignored);
+  ::backtrace_symbols_fd(frames, n, STDERR_FILENO);
+  static const char msg2[] = "=== end backtrace ===\n";
+  const ssize_t ignored2 = ::write(STDERR_FILENO, msg2, sizeof(msg2) - 1);
+  Q_UNUSED(ignored2);
+
+  // Restore the default action and re-raise, so the exit status and any
+  // core dump behave exactly as they would have without this handler.
+  struct sigaction dfl;
+  dfl.sa_handler = SIG_DFL;
+  sigemptyset(&dfl.sa_mask);
+  dfl.sa_flags = 0;
+  ::sigaction(sig, &dfl, nullptr);
+  ::raise(sig);
+}
+
+static void progressiveInstallCrashHandler()
+{
+  // NOTE: do NOT name this "signals" - Qt defines that as a macro.
+  const int fatalSignals[] = {SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE};
+  struct sigaction sa;
+  sa.sa_handler = progressiveFatalSignalHandler;
+  sigemptyset(&sa.sa_mask);
+  // No SA_RESETHAND: we reset it ourselves before re-raising.
+  sa.sa_flags = 0;
+  for (int sig : fatalSignals) ::sigaction(sig, &sa, nullptr);
+}
+
 int main(int argc, char *argv[]) {
+  progressiveInstallCrashHandler();
 #if defined(Q_OS_WIN)
   QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 #endif

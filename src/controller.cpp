@@ -55,9 +55,19 @@ inline QString accessTokenFileName(const AccountSettings& account) {
          '/' + fileName;
 }
 
+// FORK-ONLY: single funnel for every login outcome, so the UI can never
+// be left showing "Logging in...".
+void Controller::setLoginInProgress(bool inProgress) {
+  if (m_loginInProgress == inProgress)
+    return;
+  m_loginInProgress = inProgress;
+  emit loginInProgressChanged();
+}
+
 void Controller::loginWithCredentials(QString serverAddr, QString user,
                                       QString pass) {
   if (!user.isEmpty() && !pass.isEmpty()) {
+    setLoginInProgress(true);
     Connection* m_connection = new Connection(this);
     m_connection->setHomeserver(QUrl(serverAddr));
     m_connection->connectToServer(user, pass, "");
@@ -72,16 +82,19 @@ void Controller::loginWithCredentials(QString serverAddr, QString user,
         qWarning() << "Couldn't save access token";
       account.sync();
       addConnection(m_connection);
+      setLoginInProgress(false);
       emit loginSucceeded();
     });
     connect(m_connection, &Connection::networkError,
             [=](QString error, QString, int, int) {
               emit errorOccured("Network Error", error);
+              setLoginInProgress(false);
               emit loginFailed();
             });
     connect(m_connection, &Connection::loginError,
             [=](QString error, QString) {
               emit errorOccured("Login Failed", error);
+              setLoginInProgress(false);
               emit loginFailed();
             });
     // FORK-ONLY: Qt built -no-openssl (as our Qt 5.6.3 is) cannot speak
@@ -101,6 +114,7 @@ void Controller::loginWithCredentials(QString serverAddr, QString user,
           "cannot connect to Matrix homeservers over https:// (got: "
           "\"Protocol \\\"https\\\" is unknown\"). Rebuild Qt with OpenSSL "
           "support, or use a plain http:// homeserver for testing.");
+      setLoginInProgress(false);
       emit loginFailed();
       m_connection->deleteLater();
       return;

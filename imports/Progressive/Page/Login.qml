@@ -1,7 +1,12 @@
 import QtQuick 2.6
 
 LoginForm {
-    loginButton.onClicked: doLogin()
+    // FORK-ONLY: the button state is bound to the controller property.
+    // The old code set "Logging in..." imperatively and reset it from
+    // loginFailed/errorOccured signals; if one of those was missed the UI
+    // stayed stuck on "Logging in..." forever. A binding cannot desync.
+    loginButton.text: controller.loginInProgress ? "Logging in..." : "LOGIN"
+    loginButton.enabled: !controller.loginInProgress
 
     Component.onCompleted: {
         serverField.accepted.connect(doLogin)
@@ -11,17 +16,6 @@ LoginForm {
             stackView.pop()
             accountListView.currentConnection = conn
         })
-        // FORK-ONLY: re-enable the button when login fails, otherwise it
-        // stays stuck on "Logging in..." forever. Explicit loginFailed/
-        // loginSucceeded signals make this independent of error dialogs
-        // and of errorOccured arriving before this page exists.
-        controller.loginFailed.connect(resetLoginButton)
-        controller.errorOccured.connect(resetLoginButton)
-    }
-
-    function resetLoginButton() {
-        loginButton.text = "LOGIN"
-        loginButton.enabled = true
     }
 
     function doLogin() {
@@ -37,12 +31,10 @@ LoginForm {
             loginError.visible = true
             return
         }
-        // FORK-ONLY: guard against a retry being started while one is in
-        // flight (the old code allowed stacking logins).
-        if (!loginButton.enabled) return
+        // Re-entrancy guard: the button binding also disables it, but
+        // Enter could still fire while a login is in flight.
+        if (controller.loginInProgress) return
 
-        loginButton.text = "Logging in..."
-        loginButton.enabled = false
         controller.loginWithCredentials(serverField.text, usernameField.text, passwordField.text)
     }
 }
