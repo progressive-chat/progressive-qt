@@ -13,7 +13,8 @@ import "qrc:/js/util.js" as Util
 RowLayout {
     readonly property bool avatarVisible: !sentByMe && (aboveAuthor !== author || aboveSection !== section || aboveEventType === "state" || aboveEventType === "emote" || aboveEventType === "other")
     readonly property bool highlighted: !(sentByMe || eventType === "notice" )
-    readonly property bool sentByMe: author === currentRoom.localUser
+    readonly property bool sentByMe:
+        currentRoom !== null && author !== null && author === currentRoom.localUser
     readonly property bool isText: eventType === "notice" || eventType === "message"
     // FORK-ONLY: failed-message resend/discard ported from Aug 2019.
     // 0x05 == EventStatus.SendingFailed (hex literal like RoomPanelForm,
@@ -31,10 +32,10 @@ RowLayout {
     // defaults that produced a wall of "Cannot read property 'displayName' of
     // undefined" / "Unable to assign [undefined] to bool" spam. A role that
     // is present simply overrides these.
-    // An empty user object rather than null: author.displayName /
-    // author.avatar are read unconditionally, and null would turn every
-    // one of them into a TypeError.
-    property var author: ({ "displayName": "", "avatar": "", "id": "" })
+    // null, with every read guarded below. An object default carrying
+    // avatar:"" was worse than useless: it handed a QString to
+    // ImageItem's QImage property ("Unable to assign QString to QImage").
+    property var author: null
     property var userMarker: []
     property string eventType: ""
     property string display: ""
@@ -44,6 +45,10 @@ RowLayout {
     property var aboveAuthor: null
     property string aboveEventType: ""
     property var aboveTime: new Date()
+    // Always a string, whatever the row state is.
+    readonly property string authorName:
+        author !== null && author.displayName !== undefined
+        ? author.displayName : ""
     property var time: new Date()
     property bool readMarker: false
     property string eventId: ""
@@ -71,8 +76,8 @@ RowLayout {
 
         round: false
         visible: avatarVisible
-        hint: author.displayName
-        image: author.avatar
+        hint: authorName
+        image: author !== null ? author.avatar : null
     }
 
     Rectangle {
@@ -103,7 +108,7 @@ RowLayout {
                 id: authorLabel
 
                 visible: messageRow.avatarVisible
-                text: author.displayName
+                text: authorName
                 foreground: PPalette.accent
                 coloredBackground: highlighted
                 font.bold: true
@@ -111,7 +116,7 @@ RowLayout {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: roomPanelInput.insert(author.displayName)
+                    onClicked: roomPanelInput.insert(authorName)
                 }
             }
 

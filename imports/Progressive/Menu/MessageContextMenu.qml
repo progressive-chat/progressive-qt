@@ -58,13 +58,15 @@ Menu {
 
         onTriggered: {
             roomPanelInput.isReply = true
-            roomPanelInput.replyUserID = model.author.id
+            roomPanelInput.replyUserID = model && model.author ? model.author.id : ""
             roomPanelInput.replyEventID = model.eventId
             roomPanelInput.replyContent = selectedText != "" ? selectedText : model.message
         }
     }
     MenuItem {
-        visible: model && model.author === currentRoom.localUser
+        visible: model !== null && model !== undefined && model.author !== null
+                && model.author !== undefined && currentRoom !== null
+                && model.author === currentRoom.localUser
         text: "Redact"
 
         onTriggered: currentRoom.redactEvent(model.eventId)
