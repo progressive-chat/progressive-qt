@@ -24,24 +24,31 @@ RowLayout {
                       || aboveEventType === "other")
     readonly property bool highlighted: !(sentByMe || eventType === "notice")
     readonly property bool sentByMe:
-        currentRoom !== null && currentRoom !== undefined
-        && author !== null && author !== undefined
-        && author === currentRoom.localUser
+        currentRoom != null && authorOrNull != null
+        && authorOrNull === currentRoom.localUser
     readonly property bool isText: eventType === "notice" || eventType === "message"
     // FORK-ONLY: failed-message resend/discard ported from Aug 2019.
     // 0x05 == EventStatus.SendingFailed (hex literal like RoomPanelForm,
     // so the headless harness needs no C++ type registration).
     readonly property bool failed: marks === 0x05
-    // Always a string, whatever the row state is (author is undefined while
-    // the model resets).
-    // userMarker is a model role; normalise it so .length is always safe.
-    readonly property var userMarkers:
-        userMarker !== undefined && userMarker !== null ? userMarker : []
+    // `author` and `userMarker` are model roles: they arrive as undefined
+    // while the model resets. Normalise each once here so that no use site
+    // has to remember it - guarding only against null (as I first did) still
+    // threw "Cannot read property 'avatar' of undefined".
+    // NB: `x !== null` is TRUE for undefined, so these guards must use
+    // truthiness (or loose !=) - otherwise the normaliser itself yields
+    // undefined and every downstream `.avatar` throws.
+    readonly property var authorOrNull: author != null ? author : null
     readonly property string authorName:
-        author !== null && author !== undefined
-        && author.displayName !== undefined ? author.displayName : ""
+        (authorOrNull && authorOrNull.displayName != null)
+        ? authorOrNull.displayName : ""
+    // null is acceptable for ImageItem.image (a QVariant property).
+    readonly property var authorAvatar:
+        (authorOrNull && authorOrNull.avatar !== undefined)
+        ? authorOrNull.avatar : null
+    readonly property var userMarkers: userMarker != null ? userMarker : []
     readonly property bool replyVisible:
-        !!(reply && reply.eventId !== undefined && reply.eventId !== "")
+        !!(reply && reply.eventId != null && reply.eventId !== "")
 
     signal saveFileAs()
     signal openExternally()
@@ -62,7 +69,7 @@ RowLayout {
         round: false
         visible: avatarVisible
         hint: authorName
-        image: author !== null ? author.avatar : null
+        image: authorAvatar
     }
 
     Rectangle {
