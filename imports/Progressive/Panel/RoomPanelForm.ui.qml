@@ -269,19 +269,23 @@ Item {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 40
+            // FORK-ONLY: was `Layout.preferredHeight: 40` for a 48px input
+            // anchored `anchors.verticalCenter: parent.top`, i.e. centred on
+            // the box's *top edge*: the input reached 24px above its box and
+            // left 16px of empty bar-coloured strip below it (measured with
+            // t_inputbar.qml - it is the stray strip under the input in the
+            // preview21 screenshot). The 40px Item above is deliberate: it is
+            // the space RoomPanelInput's "users typing" label draws into.
+            Layout.preferredHeight: 48
             Layout.leftMargin: 16
             Layout.rightMargin: 16
 
             color: PPalette.background
 
             RoomPanelInput {
-                anchors.verticalCenter: parent.top
+                anchors.fill: parent
 
                 id: roomPanelInput
-
-                width: parent.width
-                height: 48
             }
         }
     }

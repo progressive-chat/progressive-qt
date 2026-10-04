@@ -79,6 +79,11 @@ Rectangle {
 
                 text: name || "No Name"
                 font.pointSize: 12
+                // FORK-ONLY: upstream got the primary/secondary hierarchy
+                // from Material. Now that the application palette follows our
+                // own theme, both lines would come out the same colour and the
+                // same size, so spell the difference out.
+                color: PPalette.foreground
                 elide: Text.ElideRight
                 wrapMode: Text.NoWrap
             }
@@ -88,6 +93,8 @@ Rectangle {
                 Layout.fillHeight: true
 
                 text: (lastEvent == "" ? topic : lastEvent).replace(/(\r\n\t|\n|\r\t)/gm,"")
+                color: PPalette.secondaryText
+                font.pointSize: 9
                 elide: Text.ElideRight
                 wrapMode: Text.NoWrap
             }
