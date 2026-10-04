@@ -22,11 +22,18 @@ Item {
 
     id: root
 
+    // CRITICAL (Qt 5.6 / Controls 1): a bare Item has implicitWidth and
+    // implicitHeight of 0, and QtQuick.Layouts sizes a child from those.
+    // The bubble therefore collapsed to 0x0, and because contentItem was
+    // additionally bound to holder.width the message column got width 0 -
+    // every message rendered as an empty sliver. Controls 2's Control
+    // derived its implicit size from contentItem + padding; reproduce that.
+    implicitWidth: contentItem ? contentItem.implicitWidth + padding * 2 : 0
+    implicitHeight: contentItem ? contentItem.implicitHeight + padding * 2 : 0
+
     onContentItemChanged: {
-        if (contentItem) {
+        if (contentItem)
             contentItem.parent = holder
-            contentItem.width = Qt.binding(function() { return holder.width })
-        }
     }
 
     Rectangle {
@@ -42,8 +49,10 @@ Item {
     Item {
         id: holder
 
-        anchors.fill: parent
-        anchors.margins: root.padding
+        x: root.padding
+        y: root.padding
+        width: Math.max(0, root.width - root.padding * 2)
+        height: Math.max(0, root.height - root.padding * 2)
     }
 
     AutoMouseArea {
