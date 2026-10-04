@@ -31,9 +31,29 @@ Item {
     implicitWidth: contentItem ? contentItem.implicitWidth + padding * 2 : 0
     implicitHeight: contentItem ? contentItem.implicitHeight + padding * 2 : 0
 
-    onContentItemChanged: {
-        if (contentItem)
-            contentItem.parent = holder
+    // FORK-ONLY: the content is STRETCHED to the bubble (this is what
+    // Controls 2's Control did for us upstream), and the bubble gets its
+    // implicit size from the content. Without the stretch the content kept
+    // its own layout-driven width, and see MessageDelegate for why that
+    // width was collapsing.
+    onContentItemChanged: reparentContent()
+    Component.onCompleted: reparentContent()
+
+    function reparentContent() {
+        if (!contentItem)
+            return
+        contentItem.parent = holder
+        // NB: Qt.binding() takes a *function* here - the string form
+        // ("holder.width") was dropped long before Qt 5.
+        //
+        // Only the WIDTH is stretched. Binding the height too looks
+        // symmetrical but makes implicitHeight depend on itself (the bubble
+        // sizes from contentItem.implicitHeight, and holder.height comes
+        // back from the bubble) - Qt reports "Binding loop detected for
+        // property implicitHeight" and the bubble collapses. Nothing in a
+        // timeline column uses Layout.fillHeight, so the height is better
+        // left to the content.
+        contentItem.width = Qt.binding(function() { return holder.width })
     }
 
     Rectangle {

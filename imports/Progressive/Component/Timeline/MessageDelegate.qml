@@ -53,12 +53,39 @@ RowLayout {
     signal saveFileAs()
     signal openExternally()
 
+    // FORK-ONLY: measure the message text *outside* the layout.
+    //
+    // A Label/TextEdit that is stretched by its parent and wraps cannot also
+    // report how wide it wants to be: Qt lays the document out at the width
+    // it has been given, and the implicit width then degenerates to the
+    // widest single word. TimelineLabel has exactly that shape (an Item whose
+    // implicitWidth is the anchored Text's, so authorLabel.font.family and
+    // every author name collapse too), and MessageDelegate's contentLabel is
+    // `Layout.fillWidth`. The result was self-fulfilling: the layout handed
+    // out a provisional narrow width, the wrapped text measured 23px, and
+    // the bubble stayed 23px wide forever - empty grey slivers.
+    //
+    // TextMetrics measures at its own natural width, so it is immune to that
+    // cycle; genericBubble.implicitWidth below uses it instead of the
+    // children's implicit width. Qt 5.6's TextMetrics has no textFormat, so
+    // measure the markup-stripped text.
+    readonly property string plainDisplay:
+        (display != null) ? Util.stripMarkup(display) : ""
+    readonly property int measuredTextWidth:
+        (isText && plainDisplay.length > 0) ? displayMetrics.width : 0
+
+    TextMetrics {
+        id: displayMetrics
+
+        font: contentLabel.font
+        text: messageRow.plainDisplay
+    }
+
     // FORK-ONLY: bounded diagnostic, reported *after* the layout has
     // settled. Reading geometry in Component.onCompleted is misleading -
     // implicit widths are not final yet, which made the first report look
     // like the text measured 30px wide when it does not.
     property int debugLoggedCount: 0
-    property bool debugWarned: false
 
     Timer {
         id: debugTimer
@@ -70,20 +97,25 @@ RowLayout {
             if (typeof progressiveDebugDelegate !== "undefined"
                     && !progressiveDebugDelegate && debugLoggedCount >= 3)
                 return
-            if (isText && display != null && display.length > 0
-                    && messageColumn.width < 40 && !debugWarned) {
-                debugWarned = true
-                console.warn("COLLAPSED-COLUMN eventType=[" + eventType + "]"
-                             + " displayLen=" + display.length
-                             + " textLen=" + contentLabel.text.length
-                             + " row.width=" + messageRow.width
-                             + " column.width=" + messageColumn.width
-                             + " column.implicitWidth=" + messageColumn.implicitWidth
-                             + " label.width=" + contentLabel.width
-                             + " label.implicitWidth=" + contentLabel.implicitWidth
-                             + " bubble.width=" + genericBubble.width
-                             + " bubble.implicitWidth=" + genericBubble.implicitWidth)
-            }
+            debugLoggedCount = debugLoggedCount + 1
+            console.warn("DELEGATE-GEO eventType=[" + eventType + "]"
+                         + " author=[" + authorName + "]"
+                         + " sentByMe=" + sentByMe
+                         + " avatarVisible=" + avatarVisible
+                         + " displayLen=" + (display != null ? display.length : -1)
+                         + " plainLen=" + messageRow.plainDisplay.length
+                         + " measured=" + messageRow.measuredTextWidth
+                         + " column.implicitWidth=" + messageColumn.implicitWidth
+                         + " label.width=" + contentLabel.width
+                         + " label.implicitWidth=" + contentLabel.implicitWidth
+                         + " label.implicitHeight=" + contentLabel.implicitHeight
+                         + " bubble.width=" + genericBubble.width
+                         + " bubble.implicitWidth=" + genericBubble.implicitWidth
+                         + " bubble.implicitHeight=" + genericBubble.implicitHeight
+                         + " row.implicitWidth=" + messageRow.implicitWidth
+                         + " row.implicitHeight=" + messageRow.implicitHeight
+                         + "\n    plain=[" + messageRow.plainDisplay.substr(0, 70) + "]"
+                         + "\n    bound=[" + contentLabel.text.substr(0, 70) + "]")
         }
     }
 
@@ -122,6 +154,15 @@ RowLayout {
 
         highlighted: messageRow.highlighted
         colored: !!(highlighted && (eventType === "notice" || highlight === true))
+
+        // FORK-ONLY: size the bubble from our own measurement of the text,
+        // not from contentItem.implicitWidth (see plainDisplay above). The
+        // column's implicit width is still taken into account so that wide
+        // non-text children - a file name, a reactions row - keep the bubble
+        // from clipping them.
+        implicitWidth: Math.max(messageColumn.implicitWidth,
+                                messageRow.measuredTextWidth)
+                       + padding * 2
 
         contentItem: ColumnLayout {
             id: messageColumn
