@@ -53,19 +53,33 @@ RowLayout {
     signal saveFileAs()
     signal openExternally()
 
-    // FORK-ONLY: diagnostic dump of the roles this delegate actually got
-    // (enabled with PROGRESSIVE_DEBUG_DELEGATE=1).
+    // FORK-ONLY: bounded diagnostic. We cannot inspect a running UI on the
+    // build box, so a few delegates always report what they received
+    // (first 3 per process), and ANY text message that arrives with no
+    // text reports itself as a warning. Both go to stderr, so they show up
+    // in a terminal run. Set PROGRESSIVE_DEBUG_DELEGATE=1 for all of them.
+    property int debugLoggedCount: 0
+    property bool debugWarned: false
+
     Component.onCompleted: {
         if (typeof progressiveDebugDelegate !== "undefined"
-                && progressiveDebugDelegate) {
-            console.log("DELEGATE eventType=[" + eventType + "]"
-                        + " isText=" + isText
-                        + " displayLen=" + (display != null ? display.length : -1)
-                        + " authorName=[" + authorName + "]"
-                        + " marks=" + marks
-                        + " contentLabel.implicitWidth=" + contentLabel.implicitWidth
-                        + " column.implicitWidth=" + messageColumn.implicitWidth
-                        + " bubble.implicitWidth=" + genericBubble.implicitWidth)
+                && !progressiveDebugDelegate && debugLoggedCount >= 3)
+            return
+        debugLoggedCount = debugLoggedCount + 1
+        var line = "DELEGATE eventType=[" + eventType + "] isText=" + isText
+                   + " displayLen=" + (display != null ? display.length : -1)
+                   + " authorName=[" + authorName + "] marks=" + marks
+                   + " content.visible=" + contentLabel.visible
+                   + " content.implicitWidth=" + contentLabel.implicitWidth
+                   + " column.implicitWidth=" + messageColumn.implicitWidth
+                   + " bubble.implicitWidth=" + genericBubble.implicitWidth
+        if (isText && (display == null || display.length === 0)) {
+            if (!debugWarned) {
+                debugWarned = true
+                console.warn("EMPTY-MESSAGE " + line)
+            }
+        } else {
+            console.log(line)
         }
     }
 
