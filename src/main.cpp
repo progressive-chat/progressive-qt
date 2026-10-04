@@ -4,10 +4,13 @@
 #include <QGuiApplication>
 #include <QNetworkProxy>
 #include <QQmlApplicationEngine>
+#include <QKeyEvent>
+#include <QQuickWindow>
 #include <QQmlContext>
 #include <QStandardPaths>
 #ifdef Q_OS_ANDROID
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QTextStream>
 #endif
@@ -158,6 +161,71 @@ static void progressiveInstallCrashHandler()
   for (int sig : fatalSignals) ::sigaction(sig, &sa, nullptr);
 }
 
+// FORK-ONLY: Ctrl+Shift+S saves a PNG of the main window and prints the
+// path. Minimal/embedded systems often have no screenshot tool installed,
+// and bug reports are far more useful with a picture. Also honours
+// PROGRESSIVE_SCREENSHOT=/path/file.png to capture once after startup.
+static QString progressiveSaveScreenshot(QQuickWindow* window)
+{
+  if (!window) return {};
+  const QImage shot = window->grabWindow();
+  if (shot.isNull()) {
+    qWarning() << "Screenshot failed (grabWindow returned a null image)";
+    return {};
+  }
+  // Stamped name so several shots do not overwrite each other.
+  const QString stamp =
+      QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-hhmmss"));
+  QString path = QStringLiteral("progressive-chat-%1.png").arg(stamp);
+  if (qEnvironmentVariableIsSet("PROGRESSIVE_SCREENSHOT_DIR")) {
+    QDir dir(QString::fromLocal8Bit(qgetenv("PROGRESSIVE_SCREENSHOT_DIR")));
+    dir.mkpath(QStringLiteral("."));
+    path = dir.filePath(path);
+  }
+  if (!shot.save(path, "PNG")) {
+    qWarning() << "Screenshot failed: cannot write" << path;
+    return {};
+  }
+  qWarning().noquote() << "Screenshot saved:" << QFileInfo(path).absoluteFilePath();
+  return path;
+}
+
+// Ctrl+Shift+S key filter. A QShortcut would need a QWidget parent, and a
+// QQuickWindow is not one, so match the key press ourselves.
+class ProgressiveScreenshotKeyFilter : public QObject
+{
+  public:
+    explicit ProgressiveScreenshotKeyFilter(QQuickWindow* window)
+        : m_window(window)
+    {
+        window->installEventFilter(this);
+    }
+
+  protected:
+    bool eventFilter(QObject* obj, QEvent* event) override
+    {
+        if (event->type() == QEvent::KeyPress) {
+            auto* key = static_cast<QKeyEvent*>(event);
+            const bool ctrl = key->modifiers().testFlag(Qt::ControlModifier);
+            const bool shift = key->modifiers().testFlag(Qt::ShiftModifier);
+            if (ctrl && shift && key->key() == Qt::Key_S) {
+                progressiveSaveScreenshot(m_window);
+                return true;
+            }
+        }
+        return QObject::eventFilter(obj, event);
+    }
+
+  private:
+    QQuickWindow* m_window;
+};
+
+static void progressiveInstallScreenshotShortcut(QQuickWindow* window)
+{
+  if (!window) return;
+  new ProgressiveScreenshotKeyFilter(window);
+}
+
 int main(int argc, char *argv[]) {
   progressiveInstallCrashHandler();
 #if defined(Q_OS_WIN)
@@ -228,5 +296,17 @@ int main(int argc, char *argv[]) {
   }
 
   PROGRESSIVE_STAGE("entering event loop");
+
+  // FORK-ONLY: in-app screenshot (Ctrl+Shift+S).
+  if (auto* window =
+          qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
+    progressiveInstallScreenshotShortcut(window);
+    if (qEnvironmentVariableIsSet("PROGRESSIVE_SCREENSHOT")) {
+      // Capture once the first frame is on screen.
+      QTimer::singleShot(4000, window,
+                         [window] { progressiveSaveScreenshot(window); });
+    }
+  }
+
   return app.exec();
 }
