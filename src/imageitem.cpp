@@ -54,8 +54,17 @@ void ImageItem::paint(QPainter *painter) {
   painter->drawImage(center, scaled);
 }
 
-void ImageItem::setImage(const QImage &image) {
-  m_image = image;
+void ImageItem::setImage(const QVariant &image) {
+  QImage img;
+  if (image.userType() == qMetaTypeId<QImage>()) {
+    img = image.value<QImage>();
+  } else if (image.canConvert<QImage>()) {
+    img = image.value<QImage>();
+  }
+  // Skip no-op assignments: delegates rebind the same avatar on every
+  // model update, and repainting each time is pure churn.
+  if (m_image == img) return;
+  m_image = img;
   emit imageChanged();
   update();
 }
