@@ -53,6 +53,22 @@ RowLayout {
     signal saveFileAs()
     signal openExternally()
 
+    // FORK-ONLY: diagnostic dump of the roles this delegate actually got
+    // (enabled with PROGRESSIVE_DEBUG_DELEGATE=1).
+    Component.onCompleted: {
+        if (typeof progressiveDebugDelegate !== "undefined"
+                && progressiveDebugDelegate) {
+            console.log("DELEGATE eventType=[" + eventType + "]"
+                        + " isText=" + isText
+                        + " displayLen=" + (display != null ? display.length : -1)
+                        + " authorName=[" + authorName + "]"
+                        + " marks=" + marks
+                        + " contentLabel.implicitWidth=" + contentLabel.implicitWidth
+                        + " column.implicitWidth=" + messageColumn.implicitWidth
+                        + " bubble.implicitWidth=" + genericBubble.implicitWidth)
+        }
+    }
+
     z: -5
 
     id: messageRow

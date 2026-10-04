@@ -294,6 +294,12 @@ int main(int argc, char *argv[]) {
   // so expose the cache location from C++ instead. See DownloadableContent.qml.
   engine.rootContext()->setContextProperty(
       "cacheLocation", QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
+  // FORK-ONLY: PROGRESSIVE_DEBUG_DELEGATE=1 makes the timeline delegate log
+  // the roles it actually received. This is the only reliable way to see
+  // what a delegate gets on a device we cannot inspect.
+  engine.rootContext()->setContextProperty(
+      "progressiveDebugDelegate",
+      qEnvironmentVariableIsSet("PROGRESSIVE_DEBUG_DELEGATE"));
   engine.addImageProvider(QLatin1String("mxc"), m_provider);
 
   engine.load(QUrl(QStringLiteral("qrc:/qml/main.qml")));
