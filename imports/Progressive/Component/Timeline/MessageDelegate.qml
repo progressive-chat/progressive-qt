@@ -53,6 +53,43 @@ RowLayout {
     signal saveFileAs()
     signal openExternally()
 
+    // FORK-ONLY: bounded diagnostic, reported *after* the layout has
+    // settled. Reading geometry in Component.onCompleted is misleading -
+    // implicit widths are not final yet, which made the first report look
+    // like the text measured 30px wide when it does not.
+    property int debugLoggedCount: 0
+    property bool debugWarned: false
+
+    Timer {
+        id: debugTimer
+        interval: 700
+        running: true
+        repeat: false
+
+        onTriggered: {
+            if (typeof progressiveDebugDelegate !== "undefined"
+                    && !progressiveDebugDelegate && debugLoggedCount >= 3)
+                return
+            if (isText && display != null && display.length > 0
+                    && messageColumn.width < 40 && !debugWarned) {
+                debugWarned = true
+                console.warn("COLLAPSED-COLUMN eventType=[" + eventType + "]"
+                             + " displayLen=" + display.length
+                             + " textLen=" + contentLabel.text.length
+                             + " row.width=" + messageRow.width
+                             + " column.width=" + messageColumn.width
+                             + " column.implicitWidth=" + messageColumn.implicitWidth
+                             + " label.width=" + contentLabel.width
+                             + " label.implicitWidth=" + contentLabel.implicitWidth
+                             + " bubble.width=" + genericBubble.width
+                             + " bubble.implicitWidth=" + genericBubble.implicitWidth)
+            }
+        }
+    }
+
+    signal saveFileAs()
+    signal openExternally()
+
     // FORK-ONLY: bounded diagnostic. We cannot inspect a running UI on the
     // build box, so a few delegates always report what they received
     // (first 3 per process), and ANY text message that arrives with no
