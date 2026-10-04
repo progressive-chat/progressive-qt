@@ -60,6 +60,58 @@ Notes:
   QtGraphicalEffects / `Qt.labs.settings` 1.0 — no `Qt.labs.platform`
   on 5.6 (tray icon stays `Loader`-guarded by design).
 
+## Headless QML harness (`qmltest/`)
+
+No X server, no GL, no way to look at the UI — so the QML is verified by
+loading it into a real QtQuick engine offscreen and asserting on what came
+out. The harness **links the app's own sources** (`qmlcheck.pro` lists them,
+including the vendored `libQMatrixClient` and `SortFilterProxyModel`; only
+`main.cpp` is left out, since `main()` would collide). That matters: an
+earlier version registered hand-written stand-ins for the models, which
+carried the same role names *by hand* — so a rename in a real model could not
+be caught, and role names are exactly what has broken repeatedly.
+
+```sh
+cd /home/user/qt56-toolchain/qmltest
+mkdir -p build && cd build
+/home/user/qt56-toolchain/install/bin/qmake ../qmlcheck.pro && make -j4
+
+cd ..
+export QT_QPA_PLATFORM=offscreen \
+       QMLCHECK_IMPORT_PATHS=$PWD/stubs:/home/user/progressive-android-qt/imports \
+       QMLCHECK_RCC=$PWD/test.rcc
+for f in t_*.qml; do ./build/qmlcheck $f; done     # prints RESULT:PASS per file
+```
+
+Notes:
+
+- `-fuse-ld=gold` is set in `qmlcheck.pro`: this Qt carries DWARF 5, which the
+  distro's default `ld` cannot parse.
+- Sources are referenced **relatively** on purpose. Both vendored `.pri` files
+  set `object_parallel_to_source`, and for absolute paths qmake writes the
+  `.o` files *next to the sources* — into the app's source tree, where the
+  release build keeps its own objects. Building the harness would then
+  overwrite those and the next app link would pick up harness objects.
+- `testroom.h` builds a **real** connection and room: a `/sync` response goes
+  through libQMatrixClient's `SyncData::parseJson()` and the connection's
+  `onSyncSuccess()`, so the Connection creates a real `SpectralRoom` and
+  `MessageEventModel`/`UserListModel`/`RoomListModel` run the app's actual
+  `DisplayRole`, author and event-type logic. The homeserver is pointed at a
+  closed loopback port because `connectWithToken()` also fetches
+  `/capabilities`; the harness never reaches the network.
+- `mxc://` image requests go to a null provider: the real `ImageProvider`
+  downloads, and it runs on Qt's pixmap reader thread with a *blocking*
+  `invokeMethod` on the connection, which is a crash waiting for teardown.
+  `ImageItem` itself is the real C++ type, so property-type mistakes are still
+  caught.
+- `test.rcc` is regenerated whenever `js/util.js` changes:
+  `rcc --binary --output qmltest/test.rcc res.qrc` (from the repo root).
+  `--binary` matters: the default output fails to register on this Qt.
+- Where a real object cannot be injected (a role named `name` is shadowed by
+  `Item.name`, a role called `time` would need a live room), tests use
+  `rolemodel.h` — a plain test fixture, not a stub of app code. Its role names
+  are read off the real models, so it cannot drift.
+
 ## Verification results (this toolchain)
 
 - `qmake progressive-qt.pro && make` — clean, `progressive-chat` links.
