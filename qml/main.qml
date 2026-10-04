@@ -28,6 +28,27 @@ ApplicationWindow {
     visible: true
     title: qsTr("Progressive Chat")
 
+    // FORK-ONLY: keep Qt's application palette in step with our own theme.
+    // Controls 1 Labels default to SystemPalette.windowText, i.e. they follow
+    // the *desktop's* colour scheme. On a dark-themed desktop that is white,
+    // which on this app's light backgrounds means invisible text - the room
+    // list rendered avatars with unreadable names. progressiveApplyTheme()
+    // lives in src/themepalette.h; the harness stubs it (see t_palette.qml).
+    function applyAppTheme() {
+        // progressiveApplyTheme is a QObject (src/themepalette.h), not a
+        // function: `typeof x !== "undefined"` is true for it, so the guard
+        // has to check that its Q_INVOKABLE is actually reachable.
+        if (typeof progressiveApplyTheme !== "undefined"
+                && progressiveApplyTheme
+                && typeof progressiveApplyTheme.apply === "function")
+            progressiveApplyTheme.apply(PSettings.darkTheme)
+    }
+
+    Connections {
+        target: PSettings
+        onDarkThemeChanged: window.applyAppTheme()
+    }
+
     // System tray (desktop only, Qt >= 5.8). On Qt 5.6 / Android this
     // Loader simply stays empty — the app remains fully usable.
     Loader {
@@ -393,6 +414,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        applyAppTheme()
         progressiveController.initiated.connect(function() {
             if (progressiveController.accountCount == 0) stackView.push(loginPage)
         })

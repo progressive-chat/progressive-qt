@@ -121,7 +121,8 @@ HEADERS += \
     src/accountlistmodel.h \
     src/spectraluser.h \
     src/notifications/manager.h \
-    src/utils.h
+    src/utils.h \
+    src/themepalette.h
 
 SOURCES += src/main.cpp \
     src/controller.cpp \

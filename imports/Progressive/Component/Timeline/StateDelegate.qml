@@ -31,6 +31,18 @@ Item {
     readonly property real widthCap:
         Layout.maximumWidth > 0 ? Layout.maximumWidth : naturalWidth
 
+    // FORK-ONLY: restore the text binding the Qt 5.6 port dropped. Tag 464
+    // was a Controls 2 Label with
+    //     text: "<b>" + author.displayName + "</b> " + display
+    // and replacing that Label with a bare Item + Text lost the binding
+    // entirely: `text` was never set, so every state event ("joined the
+    // room", "set the topic to: ...") drew as an empty grey box. Both roles
+    // have to be guarded - they arrive as undefined while the model resets.
+    readonly property string authorText:
+        (author && author.displayName !== undefined) ? author.displayName : ""
+    readonly property string displayText:
+        (display != null) ? String(display) : ""
+
     implicitWidth: Math.min(naturalWidth, widthCap)
     implicitHeight: label.implicitHeight + 8
 
@@ -51,6 +63,8 @@ Item {
 
         anchors.fill: parent
         anchors.margins: 8
+
+        text: "<b>" + root.authorText + "</b> " + root.displayText
 
         color: "white"
         wrapMode: Text.Wrap

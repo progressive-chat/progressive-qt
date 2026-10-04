@@ -3,6 +3,7 @@
 // Based on Spectral (GPL-3.0). See README.md.
 #include <QGuiApplication>
 #include <QNetworkProxy>
+#include <QPalette>
 #include <QQmlApplicationEngine>
 #include <QKeyEvent>
 #include <QQuickWindow>
@@ -40,6 +41,7 @@ Q_IMPORT_PLUGIN(QmlSettingsPlugin)
 #endif
 #include "room.h"
 #include "roomlistmodel.h"
+#include "themepalette.h"
 #include "spectralroom.h"
 #include "spectraluser.h"
 #include "userlistmodel.h"
@@ -301,6 +303,21 @@ int main(int argc, char *argv[]) {
       "progressiveDebugDelegate",
       qEnvironmentVariableIsSet("PROGRESSIVE_DEBUG_DELEGATE"));
   engine.addImageProvider(QLatin1String("mxc"), m_provider);
+
+  // FORK-ONLY: keep Qt's application palette in step with the app's own
+  // theme (PSettings.darkTheme).
+  //
+  // Controls 1 Labels take their colour from SystemPalette.windowText, not
+  // from anything the app sets. On a desktop whose own colour scheme is dark
+  // (a dark GTK theme, say) that is *white* - while this app paints its own
+  // light background from PSettings.darkTheme. The result is white text on a
+  // white row: the room list showed avatars and invisible names, and the same
+  // would happen to the user list, the directories and the settings page.
+  // Setting the palette once here fixes every such default-coloured control
+  // instead of patching two dozen call sites, and main.qml calls it again
+  // whenever the user flips the setting.
+  engine.rootContext()->setContextProperty(
+      "progressiveApplyTheme", new ThemePalette(&engine));
 
   engine.load(QUrl(QStringLiteral("qrc:/qml/main.qml")));
   PROGRESSIVE_STAGE("qml loaded");

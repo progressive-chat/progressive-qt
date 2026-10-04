@@ -158,6 +158,11 @@ Rectangle {
             Layout.preferredHeight: 48
 
             horizontalScrollBarPolicy: Qt.ScrollBarAlwaysOff
+            // FORK-ONLY: the input is a fixed 48px tall, so a vertical
+            // scrollbar can only ever be in the way - Controls 1 showed one
+            // anyway (upstream's Controls 2 version clips instead).
+            verticalScrollBarPolicy: Qt.ScrollBarAlwaysOff
+            clip: true
 
             TextArea {
                 property real progress: 0
@@ -166,12 +171,28 @@ Rectangle {
 
                 wrapMode: Text.Wrap
                 selectByMouse: true
-                frameVisible: false
+
+                verticalAlignment: TextEdit.AlignVCenter
 
                 text: currentRoom ? currentRoom.cachedInput : ""
 
+                // FORK-ONLY: Qt 5.6 foot-guns in this one control.
+                // A Controls 1 TextArea has NO `background`, `color`,
+                // `selectionColor` or `selectedTextColor` property (those are
+                // Controls 2): it has `backgroundVisible` and `textColor`.
+                // It fills itself with SystemPalette.base, so on a desktop
+                // with a dark colour scheme the input rendered as an opaque
+                // black box - and `frameVisible: false`, which the port had
+                // instead, only hides the border, not the fill.
+                backgroundVisible: false
+                textColor: PPalette.foreground
+
+                // Qt 5.6 TextArea has no padding properties either, so the
+                // inset is done with anchors on the placeholder.
                 Text {
                     anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 8
 
                     text: isReply ? "Reply to " + replyUserID : "Send a Message"
                     color: PPalette.secondaryText
