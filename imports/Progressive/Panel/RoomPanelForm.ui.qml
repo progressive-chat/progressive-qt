@@ -94,14 +94,10 @@ Item {
 
                 spacing: 8
 
-                // FORK-ONLY: role defaults. The delegate is asked for rows
-                // that no longer exist while the model resets around it, and
-                // the model answers with an invalid QVariant - so every role
-                // becomes undefined and `text: section` / `text: display`
-                // warned. A present role overrides these.
-                property string section: ""
-                property string aboveSection: ""
-                property string display: ""
+                // FORK-ONLY: `section` / `display` are model roles. They must
+                // NOT be redeclared here - a QML declaration shadows the
+                // role on Qt 5.6 and the value would never arrive. Instead
+                // coerce at the point of use (see below).
 
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
@@ -119,7 +115,7 @@ Item {
 
                         anchors.centerIn: parent
 
-                        text: section
+                        text: section !== undefined ? section : ""
                         color: "white"
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -142,7 +138,7 @@ Item {
 
                     visible: eventType === "other"
 
-                    text: display
+                    text: display !== undefined ? display : ""
                     color: "grey"
                     font.italic: true
                 }

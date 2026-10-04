@@ -11,50 +11,35 @@ import Progressive.Component 2.0
 import "qrc:/js/util.js" as Util
 
 RowLayout {
-    readonly property bool avatarVisible: !sentByMe && (aboveAuthor !== author || aboveSection !== section || aboveEventType === "state" || aboveEventType === "emote" || aboveEventType === "other")
-    readonly property bool highlighted: !(sentByMe || eventType === "notice" )
+    // FORK-ONLY: do NOT declare properties named after model roles here
+    // (display, author, section, marks, ...). A QML property declaration
+    // SHADOWS the delegate role of the same name on Qt 5.6: verified in the
+    // harness - with `property string display: ""` the DisplayRole never
+    // arrives and every message renders as an empty bubble. Roles that are
+    // present simply arrive as undefined, so guard at each use instead
+    // (authorName, replyVisible, !!(...) below).
+    readonly property bool avatarVisible:
+        !sentByMe && (aboveAuthor !== author || aboveSection !== section
+                      || aboveEventType === "state" || aboveEventType === "emote"
+                      || aboveEventType === "other")
+    readonly property bool highlighted: !(sentByMe || eventType === "notice")
     readonly property bool sentByMe:
-        currentRoom !== null && author !== null && author === currentRoom.localUser
+        currentRoom !== null && currentRoom !== undefined
+        && author !== null && author !== undefined
+        && author === currentRoom.localUser
     readonly property bool isText: eventType === "notice" || eventType === "message"
     // FORK-ONLY: failed-message resend/discard ported from Aug 2019.
     // 0x05 == EventStatus.SendingFailed (hex literal like RoomPanelForm,
     // so the headless harness needs no C++ type registration).
     readonly property bool failed: marks === 0x05
-    // FORK-ONLY: declare the role so a row without it yields null instead
-    // of undefined (undefined made `visible` non-boolean and sent
-    // QtQuick.Layouts into an endless re-layout loop).
-    property var reply: null
-
-    // FORK-ONLY: declare defaults for every role this delegate uses.
-    // While a ListView tears down / rebuilds delegates around a model reset
-    // the model is queried for rows that no longer exist and answers with an
-    // invalid QVariant, so *all* roles become undefined at once. Without
-    // defaults that produced a wall of "Cannot read property 'displayName' of
-    // undefined" / "Unable to assign [undefined] to bool" spam. A role that
-    // is present simply overrides these.
-    // null, with every read guarded below. An object default carrying
-    // avatar:"" was worse than useless: it handed a QString to
-    // ImageItem's QImage property ("Unable to assign QString to QImage").
-    property var author: null
-    property var userMarker: []
-    property string eventType: ""
-    property string display: ""
-    property bool highlight: false
-    property string section: ""
-    property string aboveSection: ""
-    property var aboveAuthor: null
-    property string aboveEventType: ""
-    property var aboveTime: new Date()
-    // Always a string, whatever the row state is.
+    // Always a string, whatever the row state is (author is undefined while
+    // the model resets).
+    // userMarker is a model role; normalise it so .length is always safe.
+    readonly property var userMarkers:
+        userMarker !== undefined && userMarker !== null ? userMarker : []
     readonly property string authorName:
-        author !== null && author.displayName !== undefined
-        ? author.displayName : ""
-    property var time: new Date()
-    property bool readMarker: false
-    property string eventId: ""
-    property int marks: 0
-    property var content: ({})
-    property var progressInfo: null
+        author !== null && author !== undefined
+        && author.displayName !== undefined ? author.displayName : ""
     readonly property bool replyVisible:
         !!(reply && reply.eventId !== undefined && reply.eventId !== "")
 
@@ -95,7 +80,7 @@ RowLayout {
         id: genericBubble
 
         highlighted: messageRow.highlighted
-        colored: highlighted && (eventType === "notice" || highlight)
+        colored: !!(highlighted && (eventType === "notice" || highlight === true))
 
         contentItem: ColumnLayout {
             id: messageColumn
@@ -219,15 +204,15 @@ RowLayout {
                 spacing: 4
 
                 TimelineLabel {
-                    visible: userMarker.length > 5
-                    text: userMarker.length - 5 + "+"
+                    visible: userMarkers.length > 5
+                    text: userMarkers.length - 5 + "+"
                     coloredBackground: highlighted
                     foreground: "grey"
                     font.pointSize: 8
                 }
 
                 Repeater {
-                    model: userMarker.length > 5 ? userMarker.slice(0, 5) : userMarker
+                    model: userMarkers.length > 5 ? userMarkers.slice(0, 5) : userMarkers
 
                     ImageItem {
                         width: parent.height
@@ -242,7 +227,7 @@ RowLayout {
                             cursorShape: Qt.PointingHandCursor
 
                             onClicked: {
-                                readMarkerDialog.listModel = userMarker
+                                readMarkerDialog.listModel = userMarkers
                                 readMarkerDialog.open()
                             }
                         }

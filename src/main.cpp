@@ -176,12 +176,20 @@ static QString progressiveSaveScreenshot(QQuickWindow* window)
   // Stamped name so several shots do not overwrite each other.
   const QString stamp =
       QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-hhmmss"));
-  QString path = QStringLiteral("progressive-chat-%1.png").arg(stamp);
+  // Default to the system temp directory (/tmp on Linux) rather than the
+  // current working directory: on a phone/desktop the CWD is often the
+  // user's home or a read-only location, and /tmp is where a screenshot
+  // is easiest to find from a terminal.
+  QDir dir(QStringLiteral("."));
   if (qEnvironmentVariableIsSet("PROGRESSIVE_SCREENSHOT_DIR")) {
-    QDir dir(QString::fromLocal8Bit(qgetenv("PROGRESSIVE_SCREENSHOT_DIR")));
-    dir.mkpath(QStringLiteral("."));
-    path = dir.filePath(path);
+    dir = QDir(QString::fromLocal8Bit(qgetenv("PROGRESSIVE_SCREENSHOT_DIR")));
+  } else {
+    dir = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
   }
+  if (!dir.exists())
+    dir.mkpath(QStringLiteral("."));
+  const QString path =
+      dir.filePath(QStringLiteral("progressive-chat-%1.png").arg(stamp));
   if (!shot.save(path, "PNG")) {
     qWarning() << "Screenshot failed: cannot write" << path;
     return {};
