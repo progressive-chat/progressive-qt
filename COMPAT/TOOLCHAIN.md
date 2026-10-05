@@ -87,6 +87,27 @@ Notes:
 
 - `-fuse-ld=gold` is set in `qmlcheck.pro`: this Qt carries DWARF 5, which the
   distro's default `ld` cannot parse.
+- **Always use `/home/user/qt56-toolchain/install/bin/qmake`, never a bare
+  `qmake`.** `/usr/bin/qmake` is a different Qt, and the damage is not obvious:
+  it regenerates a `Makefile` with that Qt's flags (including `-fno-rtti`, so
+  `qmlcheck.cpp`'s `dynamic_cast` stops compiling) *and* leaves `moc_*.cpp`
+  files behind that the next 5.6.3 build then fails on with
+  `QT_WARNING_DISABLE_DEPRECATED does not name a type`. Recovery is
+  `make clean` in `build/` before re-running the toolchain qmake. If RTTI
+  errors appear, check which qmake ran first — `qmlcheck.pro` keeps an explicit
+  `-frtti` as a second line of defence.
+- The import paths are resolved against the **current directory**, not against
+  `qmlcheck.pro`, so from `build/` the app is three levels up:
+  ```
+  cd build && \
+  QT_QPA_PLATFORM=offscreen \
+  QMLCHECK_IMPORT_PATHS=/home/user/qt56-toolchain/qmltest/stubs:/home/user/progressive-android-qt/imports \
+  QMLCHECK_RCC=/home/user/qt56-toolchain/qmltest/test.rcc \
+  ./qmlcheck t_delegates.qml
+  ```
+  A relative `stubs:../../progressive-android-qt/imports` (as the comment in
+  `qmlcheck.pro` suggests) silently loads nothing — every test then reports
+  `module "Progressive.Setting" is not installed` and `RESULT:FAIL`.
 - Sources are referenced **relatively** on purpose. Both vendored `.pri` files
   set `object_parallel_to_source`, and for absolute paths qmake writes the
   `.o` files *next to the sources* — into the app's source tree, where the
@@ -111,6 +132,33 @@ Notes:
   `Item.name`, a role called `time` would need a live room), tests use
   `rolemodel.h` — a plain test fixture, not a stub of app code. Its role names
   are read off the real models, so it cannot drift.
+- The default event-loop wait is 60ms, enough for bindings/Layouts/delegates to
+  settle. A test that *steps through several states* needs
+  `QMLCHECK_WAIT_MS=1200` (published to QML as `harnessWaitMs`), or it stops
+  part-way and still prints `RESULT:PASS` — a truncated run that looks green.
+  `t_copytoken.qml` guards against this itself by counting ticks.
+- Qt 5.6 JS/QML traps hit while writing tests, all verified rather than assumed:
+  - `new Date().getTime()` saturates at `2147483647` (32-bit int), so elapsed-time
+    budgets are useless; count timer ticks instead.
+  - `String.prototype.repeat` does not exist ("Property 'repeat' of object • is
+    not a function") — build the string in a loop.
+  - `item.children.concat(item.data)` throws: `children` is a QObjectList
+    wrapper without `concat`. Append into a plain array by index.
+  - A `Timer` is a QObject, so it is in `data`, **not** `children`; and
+    `toString()` on one prints only its address, so match on
+    `restart`/`interval`/`triggered` rather than the class name (it is
+    `QQmlTimer`, not `QQuickTimer`).
+  - `timer.triggered()` called from JS reaches only handlers registered from JS,
+    not an inline `onTriggered`. To exercise an inline handler, set
+    `interval = 1; restart()` and let the loop run.
+  - A Controls 1 `TextField` reports its type as plain `TextField` and wraps a
+    real `TextInput` in `TextInputWithHandles`; matching on `QQuickTextInput`
+    finds nothing. Locate such fields by position among read-only fields.
+  - A component created inline resolves an unqualified name against the **file's**
+    context (root's properties/ids), not along the visual parent chain — so test
+    roles go on the root item, and never on the delegate itself (that shadows the
+    roles). A JS array model cannot supply them at all: keys are only exposed as
+    `model.<key>`, leaving `connection` undefined.
 
 ## Verification results (this toolchain)
 

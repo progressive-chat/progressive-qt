@@ -274,6 +274,13 @@ void Controller::copyToClipboard(const QString& text) {
   m_clipboard->setText(text);
 }
 
+// FORK-ONLY: see the declaration - Connection::accessToken() is not reachable
+// from QML in this libQMatrixClient revision.
+QString Controller::accessTokenOf(Connection* conn) {
+  if (!conn) return QString();
+  return QString::fromLatin1(conn->accessToken());
+}
+
 void Controller::playAudio(QUrl localFile) {
 #ifdef PROGRESSIVE_NO_MULTIMEDIA
   Q_UNUSED(localFile);

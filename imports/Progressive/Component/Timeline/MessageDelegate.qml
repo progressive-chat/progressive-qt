@@ -94,6 +94,14 @@ RowLayout {
         repeat: false
 
         onTriggered: {
+            // FORK-ONLY: RoomPanelForm instantiates MessageDelegate,
+            // StateDelegate and the "other" delegate for EVERY row and hides
+            // two of them (visible: eventType === ...). A hidden instance is
+            // still alive and its timer still fires, so a state row used to
+            // report measured=0 and a 24x24 bubble - which says nothing about
+            // how that row renders, because StateDelegate is what draws it.
+            if (!messageRow.visible)
+                return
             if (typeof progressiveDebugDelegate !== "undefined"
                     && !progressiveDebugDelegate && debugLoggedCount >= 3)
                 return
@@ -106,6 +114,7 @@ RowLayout {
                          + " plainLen=" + messageRow.plainDisplay.length
                          + " measured=" + messageRow.measuredTextWidth
                          + " column.implicitWidth=" + messageColumn.implicitWidth
+                         + " column.implicitHeight=" + messageColumn.implicitHeight
                          + " label.width=" + contentLabel.width
                          + " label.implicitWidth=" + contentLabel.implicitWidth
                          + " label.implicitHeight=" + contentLabel.implicitHeight
@@ -115,7 +124,16 @@ RowLayout {
                          + " row.implicitWidth=" + messageRow.implicitWidth
                          + " row.implicitHeight=" + messageRow.implicitHeight
                          + "\n    plain=[" + messageRow.plainDisplay.substr(0, 70) + "]"
-                         + "\n    bound=[" + contentLabel.text.substr(0, 70) + "]")
+                         // NB: do NOT log contentLabel.text here. With
+                         // textFormat: RichText, Qt 5.6's TextEdit.text getter
+                         // returns QTextDocument::toHtml() - a serialised
+                         // document starting with `<!DOCTYPE HTML PUBLIC ...`,
+                         // 456 characters for the 10-character message
+                         // "mostly yes" (verified in the qmltest harness).
+                         // `display` is the model role, a plain string, and is
+                         // what the label was assigned.
+                         + "\n    display=[" + (display != null
+                                                ? display.substr(0, 70) : "") + "]")
         }
     }
 

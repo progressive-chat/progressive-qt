@@ -61,6 +61,19 @@ class Controller : public QObject {
   Q_INVOKABLE QColor color(QString userId);
   Q_INVOKABLE void setColor(QString userId, QColor newColor);
 
+  // FORK-ONLY: the access token of one account, for the NeoChat 2fa6ad22
+  // copy-token port in SettingAccountDelegate.qml.
+  //
+  // This exists because Connection::accessToken() is a plain (non-invokable,
+  // non-Q_PROPERTY) getter in this libQMatrixClient revision, so QML cannot
+  // read `connection.accessToken` at all - the field came out empty rather
+  // than showing the token. Going through Controller keeps the QML free of a
+  // per-connection helper object.
+  //
+  // Returns an empty string (not "undefined") for a null connection, so the
+  // caller can test it with a plain length check.
+  Q_INVOKABLE QString accessTokenOf(Connection* conn);
+
  private:
   QClipboard* m_clipboard = QApplication::clipboard();
   NotificationsManager notificationsManager;
