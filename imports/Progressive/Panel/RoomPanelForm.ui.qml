@@ -91,11 +91,28 @@ Item {
             }
 
             delegate: ColumnLayout {
-                width: parent.width
-
                 id: delegateColumn
 
                 spacing: 8
+
+                // FORK-ONLY: collapse the administrative state events a room is
+                // created with - m.room.create, power_levels, join_rules,
+                // history_visibility, guest_access - which libQMatrixClient 2019
+                // has no typed class for. They used to reach
+                // utils::eventToString's trailing fallback and draw five grey
+                // "Unknown Event" bubbles at the top of every new room.
+                //
+                // Collapsed here rather than filtered out of MessageEventModel
+                // on purpose: that model indexes the timeline by row offset in
+                // data(), and its AboveXxx roles loop over rowCount(), so
+                // dropping rows would mean renumbering both. A zero-height,
+                // invisible delegate takes no space and needs no renumbering.
+                // `eventResolvedType` is the raw m.* type from the model.
+                visible: !hiddenStateRow
+                height: hiddenStateRow ? 0 : implicitHeight
+
+                readonly property bool hiddenStateRow:
+                    eventType === "state" && Util.administrativeState(eventResolvedType)
 
                 // FORK-ONLY: `section` / `display` are model roles. They must
                 // NOT be redeclared here - a QML declaration shadows the

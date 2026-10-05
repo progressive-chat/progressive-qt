@@ -9,8 +9,10 @@
 
 #include <events/redactionevent.h>
 #include <events/roomavatarevent.h>
+#include <events/roomcreateevent.h>
 #include <events/roommemberevent.h>
 #include <events/simplestateevents.h>
+#include <events/stateevent.h>
 
 namespace utils {
 const QRegExp removeReplyRegex{"> <.*>.*\\n\\n"};
@@ -153,6 +155,21 @@ QString eventToString(const BaseEventT& evt,
       },
       [](const EncryptionEvent&) {
         return QObject::tr("activated End-to-End Encryption");
+      },
+      // FORK-ONLY: the state events a room is *created* with. libQMatrixClient
+      // 2019 has no typed class for any of them (only RoomCreateEvent among the
+      // five), so they reached the trailing fallback and every one rendered as a
+      // grey "Unknown Event" bubble at the top of every new room - five of them
+      // in a Synapse-created room. They are administrative: no user wants to see
+      // them in a timeline, and the delegate now hides them outright (see
+      // MessageDelegate's hiddenStateRow). These strings are the safety net for
+      // anything that still reaches here, so an unrecognised event reads as what
+      // it is rather than as "Unknown Event".
+      [](const RoomCreateEvent&) {
+        return QObject::tr("created the room");
+      },
+      [](const StateEventBase&) {
+        return QObject::tr("changed the room's settings");
       },
       QObject::tr("Unknown Event"));
 };

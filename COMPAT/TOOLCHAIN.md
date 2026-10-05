@@ -125,9 +125,13 @@ Notes:
   `invokeMethod` on the connection, which is a crash waiting for teardown.
   `ImageItem` itself is the real C++ type, so property-type mistakes are still
   caught.
-- `test.rcc` is regenerated whenever `js/util.js` changes:
-  `rcc --binary --output qmltest/test.rcc res.qrc` (from the repo root).
-  `--binary` matters: the default output fails to register on this Qt.
+- `test.rcc` is regenerated whenever `js/util.js` changes (from the repo root):
+  `/home/user/qt56-static/install/bin/rcc --binary --output qmltest/test.rcc res.qrc`
+  `--binary` matters: the default output fails to register on this Qt. So does
+  the *toolchain's* rcc: `/usr/bin/rcc` is Qt 5.15, and a bundle it writes is
+  rejected at registration time with `RCC-REGISTER-FAILED`, after which every
+  test that reads `qrc:/js/…` fails with "Script unavailable" rather than with
+  anything pointing at the rcc.
 - Where a real object cannot be injected (a role named `name` is shadowed by
   `Item.name`, a role called `time` would need a live room), tests use
   `rolemodel.h` — a plain test fixture, not a stub of app code. Its role names
