@@ -10,7 +10,33 @@ RoomPanelForm {
         {
             var lastScrollPosition = sortedMessageEventModel.mapFromSource(currentRoom.savedTopVisibleIndex())
             console.log("Scrolling to position", lastScrollPosition)
-            messageListView.currentIndex = lastScrollPosition
+            // FORK-ONLY: this used to be `currentIndex = lastScrollPosition`.
+            // Setting currentIndex marks the current item and scrolls nothing,
+            // so the view kept whatever contentY it had - and since the
+            // timeline is BottomToTop, a stale contentY leaves the NEWEST
+            // message below the visible area, under the input bar, while the
+            // room list (Room::lastEvent()) happily shows it. Say what the
+            // view is actually showing, so that is checkable.
+            console.log("Timeline: rows=" + sortedMessageEventModel.count
+                        + " contentHeight=" + messageListView.contentHeight
+                        + " contentY=" + messageListView.contentY
+                        + " originY=" + messageListView.originY
+                        + " height=" + messageListView.height
+                        + " rowAtBottom="
+                        + messageListView.indexAt(messageListView.contentX,
+                                                  messageListView.contentY
+                                                  + messageListView.height - 1)
+                        + " lastEvent=[" + currentRoom.lastEvent() + "]"
+                        + " row0=[" + (sortedMessageEventModel.count > 0
+                                        ? sortedMessageEventModel.get(0).display
+                                        : "") + "]")
+            if (lastScrollPosition > 0)
+                messageListView.positionViewAtIndex(lastScrollPosition, ListView.Center)
+            else
+                // 0 means "at the newest end" (savedTopVisibleIndex returns 0
+                // for that), -1 means the proxy could not map it: either way
+                // the newest message is what should be on screen.
+                messageListView.positionViewAtEnd()
             if (messageListView.contentY < messageListView.originY + 10 || currentRoom.timelineSize === 0)
                 currentRoom.getPreviousContent(100)
         }

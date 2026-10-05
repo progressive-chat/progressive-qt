@@ -48,7 +48,10 @@ class SpectralRoom : public Room {
   bool hasUsersTyping();
   QString getUsersTyping();
 
-  QString lastEvent();
+  // FORK-ONLY: Q_INVOKABLE so QML can read it - the room list's preview and
+  // the timeline both come from this, and comparing them is the only way to
+  // tell "the newest message is not on screen" from "the preview is stale".
+  Q_INVOKABLE QString lastEvent();
   bool isEventHighlighted(const QMatrixClient::RoomEvent* e) const;
 
   QDateTime lastActiveTime();

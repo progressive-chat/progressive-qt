@@ -228,7 +228,12 @@ QString MessageEventModel::renderDate(QDateTime timestamp) const {
 
 int MessageEventModel::rowCount(const QModelIndex& parent) const {
   if (!m_currentRoom || parent.isValid()) return 0;
-  return m_currentRoom->timelineSize();
+  // FORK-ONLY: data() lays the rows out as [pending events…, timeline…], so
+  // the pending ones have to be counted as well. Returning timelineSize()
+  // alone made every pending event push one more timeline row off the end -
+  // the oldest events silently disappeared from the timeline whenever a
+  // message was still in flight.
+  return timelineBaseIndex() + m_currentRoom->timelineSize();
 }
 
 QVariant MessageEventModel::data(const QModelIndex& idx, int role) const {
