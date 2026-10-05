@@ -59,6 +59,21 @@ RowLayout {
         && (Math.abs(time - aboveTime) > 600000 || index == 0)
     readonly property bool markerRowVisible:
         timeVisible || userMarkers.length > 0
+    // FORK-ONLY: one-line census of the content column's children: each
+    // visible child's type and the height it contributes. Used only by the
+    // diagnostic below, but kept as a function so both read the same way.
+    function childHeights() {
+        var parts = []
+        var kids = messageColumn.children
+        for (var i = 0; i < kids.length; ++i) {
+            var c = kids[i]
+            if (!c.visible) continue
+            var h = c.implicitHeight
+            if (h === undefined || h === null) h = c.height
+            parts.push(i + ":" + c.toString().split("_QML")[0] + "=" + h)
+        }
+        return parts.join(",")
+    }
 
     signal saveFileAs()
     signal openExternally()
@@ -125,6 +140,16 @@ RowLayout {
                          + " measured=" + messageRow.measuredTextWidth
                          + " column.implicitWidth=" + messageColumn.implicitWidth
                          + " column.implicitHeight=" + messageColumn.implicitHeight
+                         // FORK-ONLY: which child of the column is actually
+                         // supplying the height. The column's own total was
+                         // never enough to localise the gap: label 18 vs
+                         // column 50 leaves 32px that no single reported number
+                         // accounted for, and the harness cannot reproduce it
+                         // (no fonts -> it measures 16 where the device
+                         // measures 18). So report every child's contribution
+                         // directly. Cheap, one line, and it names the culprit
+                         // instead of leaving it to be guessed at again.
+                         + " kids=[" + childHeights() + "]"
                          + " label.width=" + contentLabel.width
                          + " label.implicitWidth=" + contentLabel.implicitWidth
                          + " label.implicitHeight=" + contentLabel.implicitHeight

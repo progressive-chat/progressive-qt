@@ -216,7 +216,19 @@ Item {
                 }
 
                 delegate: SettingCategoryDelegate {
+                    // FORK-ONLY: explicit height, like backButton above.
+                    // PItemDelegate is a bare Item and declares no
+                    // implicitHeight, so the Column handed these rows height 0:
+                    // the four categories (Accounts / General / Appearance /
+                    // About) were in the tree at y=0, occupying nothing and
+                    // drawing nothing. Settings opened on About - because
+                    // initialItem is aboutForm - with an apparently blank
+                    // drawer and no way to reach Accounts, which is where
+                    // Logout and the copy-token button live. Verified in the
+                    // harness: without a height they collapse, with it they do
+                    // not.
                     width: parent.width
+                    height: 56
                 }
             }
         }
