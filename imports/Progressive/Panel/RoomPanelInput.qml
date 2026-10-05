@@ -153,53 +153,60 @@ Rectangle {
             onClicked: clearReply()
         }
 
-        ScrollView {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 48
+        // FORK-ONLY: no ScrollView around this.
+        //
+        // A Controls 1 ScrollView does NOT stretch its content: it parents a
+        // non-Flickable content item into a Flickable and leaves it at its own
+        // size (ScrollView's own implicit size is 240x150, which is exactly
+        // the size the field ended up). Controls 2's ScrollView does resize
+        // the content, which is why upstream never noticed - the field
+        // rendered as a small box hugging the left of the bar.
+        //
+        // The ScrollView bought nothing anyway: the bar is pinned to 48px, so
+        // there was never anything to scroll. A TextArea scrolls its own
+        // content when the text is longer than that.
+        TextArea {
+                    property real progress: 0
 
-            horizontalScrollBarPolicy: Qt.ScrollBarAlwaysOff
-            // FORK-ONLY: the input is a fixed 48px tall, so a vertical
-            // scrollbar can only ever be in the way - Controls 1 showed one
-            // anyway (upstream's Controls 2 version clips instead).
-            verticalScrollBarPolicy: Qt.ScrollBarAlwaysOff
-            clip: true
+                    id: inputField
 
-            TextArea {
-                property real progress: 0
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 48
 
-                id: inputField
+                    wrapMode: Text.Wrap
+                    selectByMouse: true
 
-                wrapMode: Text.Wrap
-                selectByMouse: true
+                    verticalAlignment: TextEdit.AlignVCenter
 
-                verticalAlignment: TextEdit.AlignVCenter
+                    text: currentRoom ? currentRoom.cachedInput : ""
 
-                text: currentRoom ? currentRoom.cachedInput : ""
+                    // FORK-ONLY: Qt 5.6 foot-guns in this one control.
+                    // A Controls 1 TextArea has NO `background`, `color`,
+                    // `selectionColor` or `selectedTextColor` property (those
+                    // are Controls 2): it has `backgroundVisible` and
+                    // `textColor`. It fills itself with SystemPalette.base, so
+                    // on a desktop with a dark colour scheme the input
+                    // rendered as an opaque black box - and `frameVisible:
+                    // false`, which the port had instead, only hides the
+                    // border, not the fill.
+                    backgroundVisible: false
+                    textColor: PPalette.foreground
 
-                // FORK-ONLY: Qt 5.6 foot-guns in this one control.
-                // A Controls 1 TextArea has NO `background`, `color`,
-                // `selectionColor` or `selectedTextColor` property (those are
-                // Controls 2): it has `backgroundVisible` and `textColor`.
-                // It fills itself with SystemPalette.base, so on a desktop
-                // with a dark colour scheme the input rendered as an opaque
-                // black box - and `frameVisible: false`, which the port had
-                // instead, only hides the border, not the fill.
-                backgroundVisible: false
-                textColor: PPalette.foreground
+                    // Qt 5.6 TextArea has no padding properties either, so the
+                    // inset is done with anchors on the placeholder.
+                    Text {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 8
 
-                // Qt 5.6 TextArea has no padding properties either, so the
-                // inset is done with anchors on the placeholder.
-                Text {
-                    anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 8
+                        text: isReply ? "Reply to " + replyUserID
+                                      : "Send a Message"
+                        color: PPalette.secondaryText
+                        verticalAlignment: Text.AlignVCenter
 
-                    text: isReply ? "Reply to " + replyUserID : "Send a Message"
-                    color: PPalette.secondaryText
-                    verticalAlignment: Text.AlignVCenter
-
-                    visible: inputField.text === "" && !inputField.activeFocus
-                }
+                        visible: inputField.text === ""
+                                 && !inputField.activeFocus
+                    }
 
                 Timer {
                     id: timeoutTimer
@@ -326,7 +333,6 @@ Rectangle {
 
                     currentRoom.postPlainText(text)
                 }
-            }
         }
 
         PItemDelegate {

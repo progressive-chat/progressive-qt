@@ -56,7 +56,10 @@ Item {
 
         RoomHeader {
             Layout.fillWidth: true
-            Layout.preferredHeight: 64
+            // FORK-ONLY: was a hardcoded 64. The header now reports the
+            // height its content needs (RoomHeader.implicitHeight), so a
+            // taller fallback font cannot clip the topic line.
+            Layout.preferredHeight: implicitHeight
             z: 10
 
             id: roomHeader

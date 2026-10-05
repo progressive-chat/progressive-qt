@@ -17,6 +17,14 @@ Rectangle {
 
     color: PPalette.accent
 
+    // FORK-ONLY: size the header from what it actually contains instead of a
+    // fixed 64px band. RoomPanelForm used to hardcode 64, which is exactly
+    // 12 + 17.5 + 6 + 17.5 + 12 for the default font - so the moment the font
+    // on the machine was a little taller (this app falls back to a different
+    // font when material.ttf fails to load) the topic line was clipped. With
+    // implicitHeight the header grows with its content instead.
+    implicitHeight: headerRow.implicitHeight + 24
+
     PItemDelegate {
         anchors.fill: parent
 
@@ -30,9 +38,18 @@ Rectangle {
 
             spacing: 12
 
+            id: headerRow
+
             ImageItem {
-                Layout.preferredWidth: height
-                Layout.fillHeight: true
+                // FORK-ONLY: a fixed size, not `preferredWidth: height`.
+                // That was a binding cycle once the header sized itself from
+                // its content: the avatar's preferred width depended on its
+                // height, which depended on the row, which depended on the
+                // header - and the header collapsed to 24px. 40px is what the
+                // old fixed 64px band produced anyway (64 - 2*12 margins).
+                Layout.preferredWidth: 40
+                Layout.preferredHeight: 40
+                Layout.alignment: Qt.AlignVCenter
 
                 id: headerImage
 
@@ -72,13 +89,19 @@ Rectangle {
 
     ProgressBar {
         width: parent.width
+        height: 3
         z: 10
-        anchors.bottom: parent.bottom
+        // FORK-ONLY: at the TOP edge, not the bottom. Anchored to the bottom it
+        // was 17px tall and sat on top of the topic line - which is why the
+        // topic looked cut in half whenever the room was busy applying a name
+        // or topic change (measured: bar y=47..64, topic bottom 52.5).
+        anchors.top: parent.top
 
         visible: currentRoom && currentRoom.busy
         indeterminate: true
 
         style: ProgressBarStyle {
+            background: Rectangle { color: "transparent" }
             progress: Rectangle { color: "white" }
         }
     }
