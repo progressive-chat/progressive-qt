@@ -24,13 +24,34 @@ ImageProvider::ImageProvider(QObject* parent)
 
 QImage ImageProvider::requestImage(const QString& id, QSize* pSize,
                                    const QSize& requestedSize) {
-  if (!id.startsWith("mxc://")) {
+  // FORK-ONLY: the id does NOT still carry the scheme.
+  //
+  // The provider is registered under the `mxc` scheme (main.cpp:
+  // engine.addImageProvider("mxc", ...)), so Qt strips `image://mxc/` before
+  // calling us and hands over the bare remainder - "t2l.io/0e92cc..." for an
+  // avatar. The old guard required the id to *start with* "mxc://", so it
+  // rejected every single request, logged "doesn't follow server/mediaId
+  // pattern" for all of them, and returned an empty image. The public room
+  // directory then showed no avatars at all and its list stopped responding
+  // to clicks.
+  //
+  // What a valid id looks like is exactly "serverName/localMediaId" - two
+  // parts, because Connection::getThumbnail() splits on '/' and asserts two
+  // (silently taking the wrong parts in a release build). A bare host name is
+  // not resolvable and a three-part path is not a media id. Accept an explicit
+  // mxc:// prefix too, in case a caller ever hands one over unstripped.
+  QString mxcId = id;
+  if (mxcId.startsWith("mxc://")) mxcId = mxcId.mid(6);
+  if (mxcId.count('/') != 1 || mxcId.startsWith('/') || mxcId.endsWith('/')) {
     qWarning() << "ImageProvider: won't fetch an invalid id:" << id
                << "doesn't follow server/mediaId pattern";
     return {};
   }
 
-  QUrl mxcUri{id};
+  // The scheme is stripped by the time we get here (see above), and
+  // getThumbnail() wants "mxc://server/mediaId", so rebuild it from the
+  // validated id rather than from the raw argument.
+  QUrl mxcUri{"mxc://" + mxcId};
 
   QUrl tempfilePath = QUrl::fromLocalFile(
       QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/" +
