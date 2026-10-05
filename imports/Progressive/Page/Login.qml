@@ -12,6 +12,13 @@ LoginForm {
         serverField.accepted.connect(doLogin)
         usernameField.accepted.connect(doLogin)
         passwordField.accepted.connect(doLogin)
+        // FORK-ONLY: the LOGIN button was never connected. LoginForm.ui.qml
+        // declares the button and Login.qml binds its text and enabled state,
+        // but nothing ever hooked a click to doLogin() - so pressing LOGIN did
+        // nothing at all and only pressing Enter in a field worked.
+        // (Verified in the harness: clicking the button's inner Button calls
+        // nothing, while calling doLogin() directly does the login.)
+        loginButton.clicked.connect(doLogin)
         controller.connectionAdded.connect(function(conn) {
             stackView.pop()
             accountListView.currentConnection = conn

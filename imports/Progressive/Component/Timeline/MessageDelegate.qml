@@ -150,6 +150,18 @@ RowLayout {
                          // directly. Cheap, one line, and it names the culprit
                          // instead of leaving it to be guessed at again.
                          + " kids=[" + childHeights() + "]"
+                         // Why the marker row is showing. preview28 reported
+                         // kids=[...,4:QQuickRow=32] on rows that have no
+                         // timestamp, i.e. the row- hides-itself fix was not
+                         // holding on the device. timeVisible is only half the
+                         // condition - the other half is read markers, and
+                         // userMarkers.length was the untested half.
+                         + " timeVisible=" + timeVisible
+                         + " index=" + index
+                         + " gapSec=" + (time !== undefined && aboveTime !== undefined
+                                         ? Math.round(Math.abs(time - aboveTime) / 1000)
+                                         : "n/a")
+                         + " markers=" + userMarkers.length
                          + " label.width=" + contentLabel.width
                          + " label.implicitWidth=" + contentLabel.implicitWidth
                          + " label.implicitHeight=" + contentLabel.implicitHeight
