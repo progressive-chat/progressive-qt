@@ -49,6 +49,16 @@ RowLayout {
     readonly property var userMarkers: userMarker != null ? userMarker : []
     readonly property bool replyVisible:
         !!(reply && reply.eventId != null && reply.eventId !== "")
+    // FORK-ONLY: whether the marker/timestamp row has anything to show. Kept
+    // beside replyVisible so the Row below can hide itself when it does not -
+    // see the comment on that Row. `index` is a model role, hence the
+    // `index === undefined` guard: while the model resets it arrives as
+    // undefined and `Math.abs` would produce NaN.
+    readonly property bool timeVisible:
+        index !== undefined
+        && (Math.abs(time - aboveTime) > 600000 || index == 0)
+    readonly property bool markerRowVisible:
+        timeVisible || userMarkers.length > 0
 
     signal saveFileAs()
     signal openExternally()
@@ -298,34 +308,44 @@ RowLayout {
                 active: eventType === "image" || eventType === "video" || eventType === "file" || eventType === "audio"
             }
 
+            // FORK-ONLY: the marker/timestamp row hides itself when it has
+            // nothing to show. A Row's own `visible` defaults to true and only
+            // the labels INSIDE it were conditional, so the row kept reserving
+            // its height in every bubble with no timestamp - 13px of empty band
+            // under each message, which is why a one-line "test" reported
+            // bubble.implicitHeight=74 for an 18px label. Row is a positioner,
+            // not a layout: it sizes to its children and does not skip
+            // invisible ones, so the row itself has to be hidden.
             Row {
+                visible: messageRow.markerRowVisible
+
                 Layout.alignment: Qt.AlignRight
 
                 spacing: 4
 
                 TimelineLabel {
                     visible: userMarkers.length > 5
-                    text: userMarkers.length - 5 + "+"
+                    text: userMarkers.length > 5 ? userMarkers.length - 5 + "+" : ""
                     coloredBackground: highlighted
                     foreground: "grey"
                     font.pointSize: 8
                 }
-
+            
                 Repeater {
                     model: userMarkers.length > 5 ? userMarkers.slice(0, 5) : userMarkers
-
+            
                     ImageItem {
                         width: parent.height
                         height: parent.height
-
+            
                         hint: modelData.displayName
                         image: modelData.avatar
-
+            
                         MouseArea {
                             anchors.fill: parent
-
+            
                             cursorShape: Qt.PointingHandCursor
-
+            
                             onClicked: {
                                 readMarkerDialog.listModel = userMarkers
                                 readMarkerDialog.open()
@@ -333,22 +353,25 @@ RowLayout {
                         }
                     }
                 }
-
+            
                 TimelineLabel {
                     id: timeLabel
-
-                    visible: Math.abs(time - aboveTime) > 600000 || index == 0
-                    text: Qt.formatTime(time)
+            
+                    // NB: text must be empty when hidden - a hidden label that
+                    // still holds a date keeps its implicitWidth, which widens
+                    // the bubble for a timestamp nobody can see.
+                    visible: messageRow.timeVisible
+                    text: messageRow.timeVisible ? Qt.formatTime(time) : ""
                     coloredBackground: highlighted
                     foreground: "grey"
                     font.pointSize: 8
                 }
             }
-
+            
             ReactionDelegate {
                 Layout.fillWidth: true
             }
-
+            
             // FORK-ONLY: resend/discard ported from Aug 2019 (Controls 1
             // Label + MouseArea instead of Controls 2 hover links).
             Row {
